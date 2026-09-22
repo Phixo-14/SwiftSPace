@@ -199,6 +199,57 @@ async function firebaseSync(req, res) {
   res.json({ token, user: { id: user._id, username: user.username, email: user.email, role: user.role } });
 }
 
+// POST /api/auth/admin/sync-firebase-users — imports all Firebase accounts into MongoDB.
+async function syncFirebaseUsers(req, res) {
+  const firebase = getFirebaseAdmin();
+  if (!firebase) {
+    return res.status(503).json({ message: 'Firebase Admin credentials are not configured.' });
+  }
+
+  let page;
+  let synced = 0;
+  let skipped = 0;
+  do {
+    page = await firebase.auth().listUsers(1000, page?.pageToken);
+    for (const firebaseUser of page.users) {
+      if (!firebaseUser.email) {
+        skipped += 1;
+        continue;
+      }
+
+      let user = await User.findOne({
+        $or: [{ firebaseUid: firebaseUser.uid }, { email: firebaseUser.email.toLowerCase() }],
+      });
+      if (!user) {
+        const baseUsername = (firebaseUser.displayName || firebaseUser.email.split('@')[0])
+          .replace(/[^a-zA-Z0-9]/g, '')
+          .slice(0, 24) || 'user';
+        let username = baseUsername;
+        let suffix = 1;
+        while (await User.exists({ username })) {
+          username = `${baseUsername.slice(0, 30 - String(suffix).length)}${suffix}`;
+          suffix += 1;
+        }
+        user = new User({
+          username,
+          email: firebaseUser.email,
+          firebaseUid: firebaseUser.uid,
+          passwordHash: crypto.randomBytes(32).toString('hex'),
+          role: 'user',
+        });
+      }
+
+      user.firebaseUid = firebaseUser.uid;
+      user.email = firebaseUser.email;
+      user.emailVerified = firebaseUser.emailVerified;
+      await user.save();
+      synced += 1;
+    }
+  } while (page.pageToken);
+
+  res.json({ message: 'Firebase users synchronized.', synced, skipped });
+}
+
 // POST /api/auth/admins — requires an existing admin token.
 async function createAdmin(req, res) {
   const { username, email, password } = req.body;
@@ -359,4 +410,4 @@ async function getAdminOverview(req, res) {
   });
 }
 
-module.exports = { register, login, firebaseSync, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview };
+module.exports = { register, login, firebaseSync, syncFirebaseUsers, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview };

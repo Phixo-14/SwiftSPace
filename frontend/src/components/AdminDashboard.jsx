@@ -19,7 +19,9 @@ export default function AdminDashboard() {
   const [expandedOverlapUser, setExpandedOverlapUser] = useState(null);
 
   useEffect(() => {
-    api.get('/auth/admin/overview')
+    api.post('/auth/admin/sync-firebase-users')
+      .catch(() => null)
+      .then(() => api.get('/auth/admin/overview'))
       .then(({ data }) => setOverview(data))
       .catch((requestError) => {
         if (requestError.response?.status === 401) {
