@@ -42,7 +42,9 @@ export default function Login() {
       login(data.token, data.user);
       navigate('/');
     } catch (err) {
-      setError(err.response?.data?.message || 'Could not sign in.');
+      setError(err.code === 'ECONNABORTED'
+        ? 'The server took too long to respond. Please try again.'
+        : err.response?.data?.message || 'Could not sign in.');
     } finally {
       setLoading(false);
     }
