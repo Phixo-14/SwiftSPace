@@ -4,6 +4,7 @@ import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 import { firebaseAuth, firebaseConfigured } from '../firebase.js';
 import { reload, sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
+import PasswordInput from './PasswordInput.jsx';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -119,7 +120,7 @@ export default function Login() {
             </label>
             <label>
               Password
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} required />
             </label>
             {error && <p className="form-error">{error}</p>}
             {resetMessage && <p className="form-success">{resetMessage}</p>}

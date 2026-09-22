@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
+import PasswordInput from './PasswordInput.jsx';
 
 export default function AdminDashboard() {
   const { logout } = useAuth();
@@ -271,7 +272,7 @@ export default function AdminDashboard() {
               <form className="admin-form" onSubmit={handleCreateAdmin}>
                 <label>Name<input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} minLength={3} required /></label>
                 <label>Email<input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required /></label>
-                <label>Password<input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} minLength={8} required /></label>
+                <label>Password<PasswordInput value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} minLength={8} required /></label>
                 <button className="btn-primary" type="submit" disabled={creating}>{creating ? 'Creating…' : 'Create admin'}</button>
               </form>
               {message && <p className="form-success">{message}</p>}
@@ -282,7 +283,7 @@ export default function AdminDashboard() {
               <form className="admin-form" onSubmit={handleCreateUser}>
                 <label>Name<input value={userForm.username} onChange={(event) => setUserForm({ ...userForm, username: event.target.value })} minLength={3} required /></label>
                 <label>Email<input type="email" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} required /></label>
-                <label>Password<input type="password" value={userForm.password} onChange={(event) => setUserForm({ ...userForm, password: event.target.value })} minLength={8} required /></label>
+                <label>Password<PasswordInput value={userForm.password} onChange={(event) => setUserForm({ ...userForm, password: event.target.value })} minLength={8} required /></label>
                 <button className="btn-primary" type="submit" disabled={creatingUser}>{creatingUser ? 'Creating…' : 'Create user'}</button>
               </form>
               {userMessage && <p className="form-success">{userMessage}</p>}

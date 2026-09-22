@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../api.js';
 import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from 'firebase/auth';
 import { firebaseAuth, firebaseConfigured } from '../firebase.js';
+import PasswordInput from './PasswordInput.jsx';
 
 export default function Register() {
   const [username, setUsername] = useState('');
@@ -91,8 +92,7 @@ export default function Register() {
             </label>
             <label>
               Password
-              <input
-                type="password"
+              <PasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 minLength={8}
