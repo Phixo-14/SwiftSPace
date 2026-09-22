@@ -15,6 +15,7 @@ const roomRoutes = require('./src/routes/roomRoutes');
 const { requireAuth, requireAdmin } = require('./src/middleware/auth');
 
 const app = express();
+app.set('trust proxy', 1);
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
   throw new Error('JWT_SECRET must be at least 32 characters long.');
@@ -22,6 +23,12 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
 
 const allowedOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 app.use(helmet());
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'production' && req.get('x-forwarded-proto') === 'http') {
+    return res.redirect(`https://${req.get('host')}${req.originalUrl}`);
+  }
+  next();
+});
 app.use(cors({ origin: allowedOrigin }));
 app.use(express.json({ limit: '100kb' }));
 app.use(morgan('dev'));

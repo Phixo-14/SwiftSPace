@@ -109,6 +109,8 @@ npm run dev
 
 When Firebase values are present, registration and sign-in use Firebase Authentication. The backend verifies the Firebase ID token and creates or updates the matching application user in MongoDB. MongoDB stores rooms and application roles; Firebase stores the email/password identity and verification state.
 
+For online use, open the Render frontend URL using `https://`. Render provides and renews the TLS certificate automatically for both services. The frontend is configured to call the HTTPS API URL, and the backend upgrades any public HTTP request to HTTPS. Local development continues to use `http://localhost`.
+
 Vite will print a local URL, typically:
 
 ```
