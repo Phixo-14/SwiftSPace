@@ -17,6 +17,7 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setLoading(true);
+    let firebaseError;
     try {
       if (firebaseConfigured) {
         try {
@@ -34,17 +35,26 @@ export default function Login() {
           login(data.token, data.user);
           navigate('/');
           return;
-        } catch (firebaseError) {
-          if (firebaseError.code === 'auth/user-disabled') throw firebaseError;
+        } catch (requestError) {
+          firebaseError = requestError;
+          if (requestError.code === 'auth/user-disabled') throw requestError;
         }
       }
       const { data } = await api.post('/auth/login', { email, password });
       login(data.token, data.user);
       navigate('/');
     } catch (err) {
+      const firebaseMessages = {
+        'auth/invalid-credential': 'Incorrect Firebase email or password.',
+        'auth/user-not-found': 'No Firebase account exists for this email.',
+        'auth/wrong-password': 'Incorrect Firebase email or password.',
+        'auth/user-disabled': 'This Firebase account has been disabled.',
+      };
       setError(err.code === 'ECONNABORTED'
         ? 'The server took too long to respond. Please try again.'
-        : err.response?.data?.message || 'Could not sign in.');
+        : firebaseMessages[firebaseError?.code]
+          || err.response?.data?.message
+          || 'Could not sign in.');
     } finally {
       setLoading(false);
     }
