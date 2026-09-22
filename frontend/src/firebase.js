@@ -8,5 +8,7 @@ const config = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-export const firebaseConfigured = Object.values(config).every(Boolean);
+const hasPlaceholder = (value) => !value || value.startsWith('your-');
+
+export const firebaseConfigured = Object.values(config).every((value) => !hasPlaceholder(value));
 export const firebaseAuth = firebaseConfigured ? getAuth(initializeApp(config)) : null;

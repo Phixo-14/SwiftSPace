@@ -54,14 +54,20 @@ Create your environment file:
 cp .env.example .env
 ```
 
-Open `.env` and fill in two things:
+Open `.env` and configure the MongoDB and Firebase values:
 
 ```
-MONGO_URI=mongodb://127.0.0.1:27017/room-designer
-JWT_SECRET=any_long_random_string_you_make_up
+MONGO_URI=mongodb+srv://<database-user>:<password>@<cluster>.mongodb.net/swiftspace
+JWT_SECRET=replace-with-a-long-random-string
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-...@your-project.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 ```
 
-- If you're using **Atlas**, paste your Atlas connection string as `MONGO_URI` instead.
+- For **MongoDB Atlas**, create a database user, add the deployed backend IP (or use `0.0.0.0/0` only when appropriate), and paste the SRV connection string into `MONGO_URI`. The application already uses Mongoose, so no code change is needed to move from local MongoDB to Atlas.
+- In Firebase Console, enable **Authentication → Email/Password**, create a web app, and copy its web config into `frontend/.env` using `frontend/.env.example`.
+- In Firebase Console → Project settings → Service accounts, generate a private key. Put its `project_id`, `client_email`, and `private_key` into the backend environment. Render should receive these as secret environment variables from `backend/render.yaml`.
+- Add the deployed frontend hostname to Firebase Authentication → Settings → Authorized domains. Set Render's `CLIENT_ORIGIN` to that same frontend URL.
 - `JWT_SECRET` just needs to be a long, unpredictable string — it's used to sign login tokens.
 
 Seed the furniture catalog (bed, chair, desk, shelving, lamps, plant — this
@@ -100,6 +106,8 @@ cd frontend
 npm install
 npm run dev
 ```
+
+When Firebase values are present, registration and sign-in use Firebase Authentication. The backend verifies the Firebase ID token and creates or updates the matching application user in MongoDB. MongoDB stores rooms and application roles; Firebase stores the email/password identity and verification state.
 
 Vite will print a local URL, typically:
 

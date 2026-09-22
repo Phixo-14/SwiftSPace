@@ -35,7 +35,7 @@ export default function Login() {
           navigate('/');
           return;
         } catch (firebaseError) {
-          if (firebaseError.code !== 'auth/user-not-found') throw firebaseError;
+          if (firebaseError.code === 'auth/user-disabled') throw firebaseError;
         }
       }
       const { data } = await api.post('/auth/login', { email, password });
