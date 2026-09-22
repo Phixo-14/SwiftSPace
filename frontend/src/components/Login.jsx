@@ -3,13 +3,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 import { firebaseAuth, firebaseConfigured } from '../firebase.js';
-import { reload, signInWithEmailAndPassword } from 'firebase/auth';
+import { reload, sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetMessage, setResetMessage] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -60,6 +61,23 @@ export default function Login() {
     }
   }
 
+  async function handlePasswordReset() {
+    setError('');
+    setResetMessage('');
+    if (!email) {
+      setError('Enter your email address first.');
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(firebaseAuth, email);
+      setResetMessage('Password reset email sent. Check your inbox.');
+    } catch (requestError) {
+      setError(requestError.code === 'auth/user-not-found'
+        ? 'No Firebase account exists for this email.'
+        : requestError.message || 'Could not send password reset email.');
+    }
+  }
+
   return (
     <div className="auth-shell">
       <div className="auth-layout">
@@ -100,9 +118,11 @@ export default function Login() {
               <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </label>
             {error && <p className="form-error">{error}</p>}
+            {resetMessage && <p className="form-success">{resetMessage}</p>}
             <button type="submit" className="btn-primary" disabled={loading}>
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
+            {firebaseConfigured && <button type="button" className="btn-link" onClick={handlePasswordReset}>Forgot password?</button>}
           </form>
           <p className="auth-switch">
             New here? <Link to="/register">Create an account</Link>
