@@ -8,6 +8,7 @@ const morgan = require('morgan');
 const bcrypt = require('bcryptjs');
 const connectDB = require('./src/config/db');
 const User = require('./src/models/User');
+const { syncFirebaseUsersFromFirebase } = require('./src/controllers/authController');
 
 const authRoutes = require('./src/routes/authRoutes');
 const catalogRoutes = require('./src/routes/catalogRoutes');
@@ -93,6 +94,21 @@ connectDB()
   .then(async () => {
     await ensureAdminAccount();
     app.listen(PORT, () => console.log(`Room Designer API listening on port ${PORT}`));
+    try {
+      const result = await syncFirebaseUsersFromFirebase();
+      console.log(`Firebase users synchronized: ${result.synced}.`);
+    } catch (error) {
+      console.warn(`Initial Firebase synchronization skipped: ${error.message}`);
+    }
+    const syncIntervalMs = Number(process.env.FIREBASE_SYNC_INTERVAL_MS || 5 * 60 * 1000);
+    setInterval(async () => {
+      try {
+        const result = await syncFirebaseUsersFromFirebase();
+        console.log(`Firebase users synchronized: ${result.synced}.`);
+      } catch (error) {
+        console.warn(`Scheduled Firebase synchronization skipped: ${error.message}`);
+      }
+    }, syncIntervalMs).unref();
   })
   .catch((err) => {
     console.error('Failed to connect to MongoDB:', err.message);

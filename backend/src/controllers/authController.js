@@ -203,11 +203,10 @@ async function firebaseSync(req, res) {
   res.json({ token, user: { id: user._id, username: user.username, email: user.email, role: user.role } });
 }
 
-// POST /api/auth/admin/sync-firebase-users — imports all Firebase accounts into MongoDB.
-async function syncFirebaseUsers(req, res) {
+async function syncFirebaseUsersFromFirebase() {
   const firebase = getFirebaseAdmin();
   if (!firebase) {
-    return res.status(503).json({ message: 'Firebase Admin credentials are not configured.' });
+    throw new Error('Firebase Admin credentials are not configured.');
   }
 
   let page;
@@ -251,7 +250,18 @@ async function syncFirebaseUsers(req, res) {
     }
   } while (page.pageToken);
 
-  res.json({ message: 'Firebase users synchronized.', synced, skipped });
+  return { synced, skipped };
+}
+
+// POST /api/auth/admin/sync-firebase-users — imports all Firebase accounts into MongoDB.
+async function syncFirebaseUsers(req, res) {
+  try {
+    const result = await syncFirebaseUsersFromFirebase();
+    res.json({ message: 'Firebase users synchronized.', ...result });
+  } catch (error) {
+    console.error(`Firebase user synchronization failed: ${error.message}`);
+    res.status(503).json({ message: error.message });
+  }
 }
 
 // POST /api/auth/admins — requires an existing admin token.
@@ -414,4 +424,4 @@ async function getAdminOverview(req, res) {
   });
 }
 
-module.exports = { register, login, firebaseSync, syncFirebaseUsers, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview };
+module.exports = { register, login, firebaseSync, syncFirebaseUsers, syncFirebaseUsersFromFirebase, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview };
