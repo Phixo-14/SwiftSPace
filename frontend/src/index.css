@@ -398,6 +398,25 @@ a {
   font-size: 13px;
 }
 
+.status-text.error {
+  color: var(--danger);
+}
+
+.placement-warning {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 3;
+  max-width: min(320px, calc(100% - 2rem));
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 126, 126, 0.8);
+  border-radius: 6px;
+  background: rgba(70, 20, 20, 0.72);
+  color: #ffd4d4;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* ---------- Dashboard ---------- */
 
 .dashboard-main {
@@ -969,6 +988,20 @@ a {
   outline: 1px solid var(--accent);
   outline-offset: -2px;
   box-shadow: 0 0 0 3px rgba(130, 214, 168, 0.14);
+}
+
+.placed-item.preview {
+  border-style: dashed;
+  box-shadow: none;
+  outline: none;
+}
+
+.placed-item.preview.valid {
+  border-color: rgba(130, 214, 168, 0.9);
+}
+
+.placed-item.preview.invalid {
+  border-color: rgba(255, 134, 115, 0.9);
 }
 
 .placed-item-glyph {

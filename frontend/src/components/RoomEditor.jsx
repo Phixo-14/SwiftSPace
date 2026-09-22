@@ -33,6 +33,7 @@ export default function RoomEditor() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [selectedKey, setSelectedKey] = useState(null); // "x,y" of a placed item
+  const [hoverCell, setHoverCell] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
@@ -133,6 +134,33 @@ export default function RoomEditor() {
 
   const selectedItem = selectedKey ? itemsByCell.get(selectedKey) : null;
 
+  const previewItem = useMemo(() => {
+    if (!armedItemId || !hoverCell) return null;
+    const catalogItem = catalogById.get(armedItemId);
+    if (!catalogItem) return null;
+
+    const candidate = { catalogItemId: armedItemId, gridX: hoverCell.x, gridY: hoverCell.y, rotation: 0 };
+    const occupiedCells = getOccupiedCells(candidate);
+    const canPlace = occupiedCells.every(({ x, y }) => {
+      const cellX = hoverCell.x + x;
+      const cellY = hoverCell.y + y;
+      return cellX >= 0 && cellY >= 0
+        && cellX < dimensions.width && cellY < dimensions.length
+        && !itemsByCell.has(`${cellX},${cellY}`);
+    });
+
+    const bounds = getOccupiedBounds(occupiedCells);
+    return {
+      ...candidate,
+      catalogItem,
+      bounds,
+      canPlace,
+      reason: canPlace ? null : 'Furniture overlap: this placement conflicts with another item or leaves the room.',
+    };
+  }, [armedItemId, catalogById, dimensions, hoverCell, itemsByCell]);
+
+  const hoverError = previewItem && !previewItem.canPlace ? previewItem.reason : '';
+
   const handleCellClick = useCallback(
     (x, y) => {
       const key = `${x},${y}`;
@@ -156,7 +184,7 @@ export default function RoomEditor() {
         });
 
         if (!isClear) {
-          setStatus('That furniture footprint does not fit in the selected space.');
+          setStatus('Furniture overlap: this placement conflicts with another item or leaves the room.');
           return;
         }
 
@@ -334,7 +362,7 @@ export default function RoomEditor() {
           />
         </div>
         <div className="topbar-actions">
-          {status && <span className="status-text">{status}</span>}
+          {(hoverError || status) && <span className={`status-text ${hoverError ? 'error' : ''}`}>{hoverError || status}</span>}
           <button className="btn-primary" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : 'Save canvas'}
           </button>
@@ -427,6 +455,7 @@ export default function RoomEditor() {
             </button>
             <span>{Math.round(zoom * 100)}%</span>
           </div>
+          {hoverError && <div className="placement-warning">{hoverError}</div>}
           <div className="workspace-zoom" style={{ transform: `scale(${zoom})` }}>
             <div
               className="iso-grid"
@@ -446,12 +475,40 @@ export default function RoomEditor() {
                     className={`grid-cell ${placed ? 'occupied' : ''} ${isSelected ? 'selected' : ''}`}
                     style={{ gridColumn: x + 1, gridRow: y + 1 }}
                     onClick={() => handleCellClick(x, y)}
+                    onMouseEnter={() => setHoverCell({ x, y })}
+                    onMouseLeave={() => setHoverCell(null)}
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={(event) => handleCellDrop(event, x, y)}
                     aria-label={`Cell ${x}, ${y}`}
                   />
                 );
               })}
+              {previewItem && (
+                <button
+                  key={`preview-${previewItem.gridX}-${previewItem.gridY}-${previewItem.catalogItem._id}`}
+                  type="button"
+                  className={`placed-item preview ${previewItem.canPlace ? 'valid' : 'invalid'}`}
+                  style={{
+                    '--item-color': previewItem.catalogItem.defaultColor,
+                    left: `${(previewItem.gridX + previewItem.bounds.minX) * 43 + 1}px`,
+                    top: `${(previewItem.gridY + previewItem.bounds.minY) * 43 + 1}px`,
+                    width: `${previewItem.bounds.width * 42 + (previewItem.bounds.width - 1)}px`,
+                    height: `${previewItem.bounds.length * 42 + (previewItem.bounds.length - 1)}px`,
+                    pointerEvents: 'none',
+                    opacity: previewItem.canPlace ? 0.55 : 0.3,
+                  }}
+                  aria-hidden="true"
+                >
+                  <span className="placed-item-glyph">
+                    <ItemGlyph
+                      iconKey={previewItem.catalogItem.iconKey}
+                      color={previewItem.catalogItem.defaultColor}
+                      rotation={0}
+                      isometric
+                    />
+                  </span>
+                </button>
+              )}
               {placedItems.map((item) => {
                 const catalogItem = catalogById.get(item.catalogItemId);
                 if (!catalogItem) return null;
