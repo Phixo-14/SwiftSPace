@@ -38,6 +38,9 @@ export default function Login() {
           return;
         } catch (requestError) {
           firebaseError = requestError;
+          const firebaseCredentialError = typeof requestError.code === 'string'
+            && requestError.code.startsWith('auth/');
+          if (!firebaseCredentialError) throw requestError;
           if (requestError.code === 'auth/user-disabled') throw requestError;
         }
       }
@@ -51,11 +54,12 @@ export default function Login() {
         'auth/wrong-password': 'Incorrect Firebase email or password.',
         'auth/user-disabled': 'This Firebase account has been disabled.',
       };
-      setError(err.code === 'ECONNABORTED'
+      const errorMessage = err.code === 'ECONNABORTED'
         ? 'The server took too long to respond. Please try again.'
-        : firebaseMessages[firebaseError?.code]
-          || err.response?.data?.message
-          || 'Could not sign in.');
+        : err.response?.data?.message
+          || firebaseMessages[firebaseError?.code]
+          || 'Could not sign in.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
