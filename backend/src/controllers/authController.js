@@ -123,26 +123,30 @@ async function register(req, res) {
 // POST /api/auth/login
 async function login(req, res) {
   const { email, password } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid email or password.' });
+    }
 
-  const user = await User.findOne({ email });
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid email or password.' });
+    if (user.role !== 'admin' && !user.emailVerified) {
+      return res.status(403).json({ message: 'Please verify your email before signing in.' });
+    }
+
+    const match = await bcrypt.compare(password, user.passwordHash);
+    if (!match) {
+      return res.status(401).json({ message: 'Invalid email or password.' });
+    }
+
+    const token = signToken(user);
+    res.json({
+      token,
+      user: { id: user._id, username: user.username, email: user.email, role: user.role || 'user' },
+    });
+  } catch (error) {
+    console.error(`Login failed for ${email}:`, error);
+    res.status(500).json({ message: 'Login service error. Check the backend logs.' });
   }
-
-  if (user.role !== 'admin' && !user.emailVerified) {
-    return res.status(403).json({ message: 'Please verify your email before signing in.' });
-  }
-
-  const match = await bcrypt.compare(password, user.passwordHash);
-  if (!match) {
-    return res.status(401).json({ message: 'Invalid email or password.' });
-  }
-
-  const token = signToken(user);
-  res.json({
-    token,
-    user: { id: user._id, username: user.username, email: user.email, role: user.role || 'user' },
-  });
 }
 
 // POST /api/auth/firebase-sync — verifies a Firebase email-link identity and syncs it to MongoDB.

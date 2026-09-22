@@ -69,10 +69,10 @@ async function ensureAdminAccount() {
   const existing = await User.findOne({ $or: [{ email: adminEmail }, { username: adminUsername }] });
 
   if (existing) {
-    if (existing.role !== 'admin') {
-      existing.role = 'admin';
-      await existing.save();
-    }
+    const passwordMatches = await bcrypt.compare(adminPassword, existing.passwordHash || '');
+    existing.role = 'admin';
+    if (!passwordMatches) existing.passwordHash = await bcrypt.hash(adminPassword, 10);
+    await existing.save();
     return;
   }
 
