@@ -2,8 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 
-// Proxies /api calls to the backend so the frontend can just use relative
-// paths in dev, matching how it would sit behind one domain in production.
+// Use the same hosted API in local development and production so both URLs
+// read and write the same Atlas-backed application data.
 export default defineConfig({
   plugins: [react(), basicSsl()],
   server: {
@@ -11,7 +11,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'https://swiftspace-api.onrender.com',
         changeOrigin: true,
       },
     },
