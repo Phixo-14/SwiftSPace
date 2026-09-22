@@ -42,7 +42,9 @@ export default function VerifyEmail() {
     } catch (requestError) {
       setError(requestError.code === 'auth/invalid-action-code'
         ? 'This verification link is invalid or has already been used.'
-        : requestError.message || 'Could not verify email.');
+        : requestError.code === 'auth/unauthorized-continue-uri'
+          ? 'Add this site domain to Firebase Authentication authorized domains.'
+          : requestError.message || 'Could not verify email.');
     } finally {
       setLoading(false);
     }

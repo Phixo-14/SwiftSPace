@@ -34,7 +34,20 @@ export default function Register() {
       });
     } catch (err) {
       const details = err.response?.data?.details;
-      setError(details ? details.join(' ') : err.response?.data?.message || 'Could not create account.');
+      const firebaseMessages = {
+        'auth/email-already-in-use': 'This email already has a Firebase account. Sign in or use another email.',
+        'auth/invalid-api-key': 'Firebase API key is invalid. Check the Firebase web app configuration.',
+        'auth/operation-not-allowed': 'Enable Email/Password sign-in in Firebase Authentication settings.',
+        'auth/weak-password': 'Firebase rejected this password. Use at least 8 characters.',
+        'auth/invalid-email': 'Enter a valid email address.',
+        'auth/unauthorized-continue-uri': 'Add this site domain to Firebase Authentication authorized domains.',
+      };
+      setError(details
+        ? details.join(' ')
+        : err.response?.data?.message
+          || firebaseMessages[err.code]
+          || err.message
+          || 'Could not create account.');
     } finally {
       setLoading(false);
     }
