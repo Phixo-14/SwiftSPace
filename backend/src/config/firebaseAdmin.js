@@ -21,6 +21,7 @@ function getFirebaseAdmin() {
       }),
     });
   }
+
   return admin;
 }
 
