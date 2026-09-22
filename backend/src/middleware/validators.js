@@ -5,14 +5,30 @@ const Joi = require('joi');
 
 const registerSchema = Joi.object({
   username: Joi.string().alphanum().min(3).max(30).required(),
-  email: Joi.string().email().required(),
+  email: Joi.string().email({ tlds: false }).required(),
   password: Joi.string().min(8).max(72).required(),
 });
 
 const loginSchema = Joi.object({
-  email: Joi.string().email().required(),
+  email: Joi.string().email({ tlds: false }).required(),
   password: Joi.string().required(),
 });
+
+const verificationSchema = Joi.object({
+  email: Joi.string().email({ tlds: false }).required(),
+  code: Joi.string().pattern(/^\d{6}$/).required(),
+});
+
+const emailSchema = Joi.object({
+  email: Joi.string().email({ tlds: false }).required(),
+});
+
+const firebaseSyncSchema = Joi.object({
+  idToken: Joi.string().required(),
+  username: Joi.string().alphanum().min(3).max(30).required(),
+});
+
+const adminSchema = registerSchema;
 
 const placedItemSchema = Joi.object({
   catalogItemId: Joi.string().hex().length(24).required(),
@@ -23,6 +39,15 @@ const placedItemSchema = Joi.object({
     .pattern(/^#[0-9A-Fa-f]{6}$/)
     .allow(null)
     .default(null),
+});
+
+const overlapRecordSchema = Joi.object({
+  catalogItemId: Joi.string().hex().length(24).required(),
+  gridX: Joi.number().integer().min(0).required(),
+  gridY: Joi.number().integer().min(0).required(),
+  rotation: Joi.number().valid(0, 90, 180, 270).default(0),
+  reason: Joi.string().trim().max(180).required(),
+  occurredAt: Joi.date().default(() => new Date()),
 });
 
 // Shared by both create (POST) and update (PUT) — coordinates are re-checked
@@ -37,6 +62,7 @@ const roomSchema = Joi.object({
   floorColor: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).default('#BCA17A'),
   gridColor: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).default('#8C7455'),
   placedItems: Joi.array().items(placedItemSchema).default([]),
+  overlapRecords: Joi.array().items(overlapRecordSchema).max(100).default([]),
 });
 
 function validateBody(schema) {
@@ -53,4 +79,4 @@ function validateBody(schema) {
   };
 }
 
-module.exports = { registerSchema, loginSchema, roomSchema, validateBody };
+module.exports = { registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, adminSchema, roomSchema, validateBody };

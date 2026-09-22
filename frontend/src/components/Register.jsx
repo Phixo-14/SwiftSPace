@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api.js';
-import { useAuth } from '../AuthContext.jsx';
+import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from 'firebase/auth';
+import { firebaseAuth, firebaseConfigured } from '../firebase.js';
 
 export default function Register() {
   const [username, setUsername] = useState('');
@@ -9,7 +10,6 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -17,9 +17,21 @@ export default function Register() {
     setError('');
     setLoading(true);
     try {
+      if (firebaseConfigured) {
+        const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+        await updateProfile(credential.user, { displayName: username });
+        await sendEmailVerification(credential.user, {
+          url: `${window.location.origin}/verify-email`,
+          handleCodeInApp: false,
+        });
+        sessionStorage.setItem('firebase_pending_username', username);
+        navigate(`/verify-email?email=${encodeURIComponent(email)}`);
+        return;
+      }
       const { data } = await api.post('/auth/register', { username, email, password });
-      login(data.token, data.user);
-      navigate('/');
+      navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
+        state: { developmentCode: data.developmentCode, message: data.message },
+      });
     } catch (err) {
       const details = err.response?.data?.details;
       setError(details ? details.join(' ') : err.response?.data?.message || 'Could not create account.');

@@ -8,7 +8,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingRoomId, setDeletingRoomId] = useState(null);
-  const { user, logout } = useAuth();
+  const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -57,6 +57,8 @@ export default function Dashboard() {
         </div>
         <div className="topbar-actions">
           <span className="who">{user?.username}</span>
+          {isAdmin && <span className="who">Admin</span>}
+          {isAdmin && <Link to="/admin" className="btn-ghost">Admin dashboard</Link>}
           <button className="btn-ghost" onClick={handleLogout}>Sign out</button>
         </div>
       </header>

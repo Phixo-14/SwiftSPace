@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
+import { firebaseAuth, firebaseConfigured } from '../firebase.js';
+import { reload, signInWithEmailAndPassword } from 'firebase/auth';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -16,6 +18,26 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
+      if (firebaseConfigured) {
+        try {
+          const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+          await reload(credential.user);
+          if (!credential.user.emailVerified) {
+            setError('Please verify your email before signing in.');
+            return;
+          }
+          const firebaseToken = await credential.user.getIdToken(true);
+          const { data } = await api.post('/auth/firebase-sync', {
+            idToken: firebaseToken,
+            username: credential.user.displayName || email.split('@')[0],
+          });
+          login(data.token, data.user);
+          navigate('/');
+          return;
+        } catch (firebaseError) {
+          if (firebaseError.code !== 'auth/user-not-found') throw firebaseError;
+        }
+      }
       const { data } = await api.post('/auth/login', { email, password });
       login(data.token, data.user);
       navigate('/');

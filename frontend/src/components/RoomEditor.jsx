@@ -29,11 +29,13 @@ export default function RoomEditor() {
   const [gridColor, setGridColor] = useState(FLOOR_OPTIONS[0].grid);
   const [workspaceColor, setWorkspaceColor] = useState(FLOOR_OPTIONS[0].workspace);
   const [placedItems, setPlacedItems] = useState([]);
+  const [overlapRecords, setOverlapRecords] = useState([]);
   const [armedItemId, setArmedItemId] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [selectedKey, setSelectedKey] = useState(null); // "x,y" of a placed item
   const [hoverCell, setHoverCell] = useState(null);
+  const [draggedItem, setDraggedItem] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
@@ -51,13 +53,18 @@ export default function RoomEditor() {
         if (!isNew) {
           const roomRes = await api.get(`/rooms/${id}`);
           if (cancelled) return;
+          const validCatalogIds = new Set(catalogRes.data.map((item) => item._id.toString()));
+          const validPlacedItems = (roomRes.data.placedItems || []).filter((item) =>
+            validCatalogIds.has(item.catalogItemId?.toString())
+          );
           setRoomName(roomRes.data.roomName);
           setDimensions(roomRes.data.dimensions);
           setFloorColor(roomRes.data.floorColor || FLOOR_OPTIONS[0].floor);
           setGridColor(roomRes.data.gridColor || FLOOR_OPTIONS[0].grid);
           const savedFloor = FLOOR_OPTIONS.find((option) => option.floor === roomRes.data.floorColor);
           setWorkspaceColor(savedFloor?.workspace || FLOOR_OPTIONS[0].workspace);
-          setPlacedItems(roomRes.data.placedItems);
+          setPlacedItems(validPlacedItems);
+          setOverlapRecords(roomRes.data.overlapRecords || []);
         }
       } catch (err) {
         if (!cancelled) setStatus('Could not load room data.');
@@ -91,9 +98,10 @@ export default function RoomEditor() {
     const catalogItem = catalogById.get(item.catalogItemId);
     if (!catalogItem) return [{ x: 0, y: 0 }];
 
-    // The item's origin is its pivot cell. A catalog width extends down from
-    // that pivot and catalog length extends right before rotation.
-    const cells = [];
+    const rawCells = [];
+    let minRotatedX = 0;
+    let minRotatedY = 0;
+
     for (let y = 0; y < catalogItem.footprint.width; y += 1) {
       for (let x = 0; x < catalogItem.footprint.length; x += 1) {
         let rotatedX = x;
@@ -101,10 +109,18 @@ export default function RoomEditor() {
         for (let quarterTurn = 0; quarterTurn < rotation / 90; quarterTurn += 1) {
           [rotatedX, rotatedY] = [rotatedY, -rotatedX];
         }
-        cells.push({ x: rotatedX, y: rotatedY });
+
+        if (rotatedX < minRotatedX) minRotatedX = rotatedX;
+        if (rotatedY < minRotatedY) minRotatedY = rotatedY;
+
+        rawCells.push({ x: rotatedX, y: rotatedY });
       }
     }
-    return cells;
+
+    return rawCells.map(cell => ({
+      x: cell.x - minRotatedX,
+      y: cell.y - minRotatedY
+    }));
   }
 
   function getOccupiedBounds(cells) {
@@ -126,7 +142,9 @@ export default function RoomEditor() {
     const map = new Map();
     placedItems.forEach((item) => {
       getOccupiedCells(item).forEach(({ x, y }) => {
-        map.set(`${item.gridX + x},${item.gridY + y}`, item);
+        const cellX = item.gridX + x;
+        const cellY = item.gridY + y;
+        map.set(`${cellX},${cellY}`, item);
       });
     });
     return map;
@@ -135,18 +153,35 @@ export default function RoomEditor() {
   const selectedItem = selectedKey ? itemsByCell.get(selectedKey) : null;
 
   const previewItem = useMemo(() => {
-    if (!armedItemId || !hoverCell) return null;
-    const catalogItem = catalogById.get(armedItemId);
+    if (!hoverCell) return null;
+
+    const activeItem = draggedItem || (armedItemId ? {
+      catalogItemId: armedItemId,
+      gridX: hoverCell.x,
+      gridY: hoverCell.y,
+      rotation: selectedItem ? selectedItem.rotation : 0,
+    } : null);
+
+    if (!activeItem) return null;
+
+    const catalogItem = catalogById.get(activeItem.catalogItemId);
     if (!catalogItem) return null;
 
-    const candidate = { catalogItemId: armedItemId, gridX: hoverCell.x, gridY: hoverCell.y, rotation: 0 };
+    const candidate = {
+      catalogItemId: activeItem.catalogItemId,
+      gridX: hoverCell.x,
+      gridY: hoverCell.y,
+      rotation: activeItem.rotation,
+    };
     const occupiedCells = getOccupiedCells(candidate);
+
     const canPlace = occupiedCells.every(({ x, y }) => {
       const cellX = hoverCell.x + x;
       const cellY = hoverCell.y + y;
+      const occupant = itemsByCell.get(`${cellX},${cellY}`);
       return cellX >= 0 && cellY >= 0
         && cellX < dimensions.width && cellY < dimensions.length
-        && !itemsByCell.has(`${cellX},${cellY}`);
+        && (!occupant || occupant === draggedItem || occupant === selectedItem);
     });
 
     const bounds = getOccupiedBounds(occupiedCells);
@@ -154,12 +189,34 @@ export default function RoomEditor() {
       ...candidate,
       catalogItem,
       bounds,
+      occupiedCells,
       canPlace,
       reason: canPlace ? null : 'Furniture overlap: this placement conflicts with another item or leaves the room.',
     };
-  }, [armedItemId, catalogById, dimensions, hoverCell, itemsByCell]);
+  }, [armedItemId, catalogById, dimensions, draggedItem, hoverCell, itemsByCell, selectedItem]);
+
+  const previewCellSet = useMemo(() => {
+    if (!previewItem || !hoverCell) return new Set();
+    return new Set(
+      previewItem.occupiedCells.map(({ x, y }) => `${hoverCell.x + x},${hoverCell.y + y}`)
+    );
+  }, [previewItem, hoverCell]);
 
   const hoverError = previewItem && !previewItem.canPlace ? previewItem.reason : '';
+
+  function recordOverlap(item, gridX, gridY, reason) {
+    setOverlapRecords((records) => [
+      ...records,
+      {
+        catalogItemId: item.catalogItemId,
+        gridX,
+        gridY,
+        rotation: item.rotation || 0,
+        reason,
+        occurredAt: new Date().toISOString(),
+      },
+    ].slice(-100));
+  }
 
   const handleCellClick = useCallback(
     (x, y) => {
@@ -173,7 +230,8 @@ export default function RoomEditor() {
       }
 
       if (armedItemId) {
-        const candidate = { catalogItemId: armedItemId, gridX: x, gridY: y, rotation: 0 };
+        const currentRotation = selectedItem ? selectedItem.rotation : 0;
+        const candidate = { catalogItemId: armedItemId, gridX: x, gridY: y, rotation: currentRotation };
         const occupiedCells = getOccupiedCells(candidate);
         const isClear = occupiedCells.every(({ x: offsetX, y: offsetY }) => {
           const cellX = x + offsetX;
@@ -184,13 +242,15 @@ export default function RoomEditor() {
         });
 
         if (!isClear) {
-          setStatus('Furniture overlap: this placement conflicts with another item or leaves the room.');
+          const reason = 'Furniture overlap: this placement conflicts with another item or leaves the room.';
+          recordOverlap(candidate, x, y, reason);
+          setStatus('Overlap recorded. ' + reason);
           return;
         }
 
         setPlacedItems((prev) => [
           ...prev,
-          { catalogItemId: armedItemId, gridX: x, gridY: y, rotation: 0, customColor: null },
+          { catalogItemId: armedItemId, gridX: x, gridY: y, rotation: currentRotation, customColor: null },
         ]);
         setSelectedKey(key);
         setStatus('');
@@ -215,7 +275,9 @@ export default function RoomEditor() {
     });
 
     if (!isClear) {
-      setStatus('That rotation would overlap another item or leave the room.');
+      const reason = 'That rotation would overlap another item or leave the room.';
+      recordOverlap({ ...selectedItem, rotation: nextRotation }, selectedItem.gridX, selectedItem.gridY, reason);
+      setStatus('Overlap recorded. ' + reason);
       return;
     }
 
@@ -246,7 +308,9 @@ export default function RoomEditor() {
     });
 
     if (!isClear) {
-      setStatus('That furniture footprint does not fit in the selected space.');
+      const reason = 'That furniture footprint does not fit in the selected space.';
+      recordOverlap(candidate, gridX, gridY, reason);
+      setStatus('Overlap recorded. ' + reason);
       return;
     }
 
@@ -258,12 +322,17 @@ export default function RoomEditor() {
   }
 
   function handleFurnitureDragStart(event, item) {
+    setDraggedItem(item);
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('application/json', JSON.stringify({
       gridX: item.gridX,
       gridY: item.gridY,
       catalogItemId: item.catalogItemId,
     }));
+  }
+
+  function handleDragEnd() {
+    setDraggedItem(null);
   }
 
   function handleCellDrop(event, gridX, gridY) {
@@ -277,6 +346,7 @@ export default function RoomEditor() {
       && candidate.catalogItemId === dragged.catalogItemId
     );
     if (item) moveItem(item, gridX, gridY);
+    setDraggedItem(null);
   }
 
   function removeSelected() {
@@ -307,7 +377,10 @@ export default function RoomEditor() {
   async function handleSave() {
     setSaving(true);
     setStatus('');
-    const payload = { roomName, dimensions, floorColor, gridColor, placedItems };
+    const validPlacedItems = placedItems.filter((item) =>
+      catalogById.has(item.catalogItemId?.toString())
+    );
+    const payload = { roomName, dimensions, floorColor, gridColor, placedItems: validPlacedItems, overlapRecords };
     try {
       if (isNew) {
         const { data } = await api.post('/rooms', payload);
@@ -431,7 +504,12 @@ export default function RoomEditor() {
                     className="furniture-category"
                     type="button"
                     key={category.value}
-                    onClick={() => setSelectedCategory(category.value)}
+                    onClick={() => {
+                      setSelectedCategory(category.value);
+                      setCatalogSearch('');
+                      setArmedItemId(null);
+                      setSelectedKey(null);
+                    }}
                   >
                     <span aria-hidden="true">{category.icon}</span>
                     <span>{category.label}</span>
@@ -469,24 +547,34 @@ export default function RoomEditor() {
                 const key = `${x},${y}`;
                 const placed = itemsByCell.get(key);
                 const isSelected = selectedKey === key;
+                const isPreviewCell = previewCellSet.has(key);
+                const previewClass = isPreviewCell
+                  ? previewItem?.canPlace ? 'preview-valid' : 'preview-invalid'
+                  : '';
                 return (
                   <button
                     key={key}
-                    className={`grid-cell ${placed ? 'occupied' : ''} ${isSelected ? 'selected' : ''}`}
+                    className={`grid-cell ${placed ? 'occupied' : ''} ${isSelected ? 'selected' : ''} ${previewClass}`.trim()}
                     style={{ gridColumn: x + 1, gridRow: y + 1 }}
                     onClick={() => handleCellClick(x, y)}
                     onMouseEnter={() => setHoverCell({ x, y })}
                     onMouseLeave={() => setHoverCell(null)}
-                    onDragOver={(event) => event.preventDefault()}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      setHoverCell({ x, y });
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setHoverCell({ x, y });
+                    }}
                     onDrop={(event) => handleCellDrop(event, x, y)}
                     aria-label={`Cell ${x}, ${y}`}
                   />
                 );
               })}
               {previewItem && (
-                <button
+                <div
                   key={`preview-${previewItem.gridX}-${previewItem.gridY}-${previewItem.catalogItem._id}`}
-                  type="button"
                   className={`placed-item preview ${previewItem.canPlace ? 'valid' : 'invalid'}`}
                   style={{
                     '--item-color': previewItem.catalogItem.defaultColor,
@@ -496,6 +584,10 @@ export default function RoomEditor() {
                     height: `${previewItem.bounds.length * 42 + (previewItem.bounds.length - 1)}px`,
                     pointerEvents: 'none',
                     opacity: previewItem.canPlace ? 0.55 : 0.3,
+                    border: 'none',
+                    background: 'transparent',
+                    boxShadow: 'none',
+                    outline: 'none',
                   }}
                   aria-hidden="true"
                 >
@@ -507,7 +599,7 @@ export default function RoomEditor() {
                       isometric
                     />
                   </span>
-                </button>
+                </div>
               )}
               {placedItems.map((item) => {
                 const catalogItem = catalogById.get(item.catalogItemId);
@@ -535,6 +627,7 @@ export default function RoomEditor() {
                       setSelectedKey(`${item.gridX},${item.gridY}`);
                       setArmedItemId(null);
                     }}
+                    onDragEnd={handleDragEnd}
                     aria-label={`${catalogItem.name}, ${bounds.width} by ${bounds.length} footprint`}
                   >
                     <span className="placed-item-glyph">
@@ -577,6 +670,28 @@ export default function RoomEditor() {
             />
           </label>
           <p className="mono muted small">{placedItems.length} item(s) placed</p>
+
+          {overlapRecords.length > 0 && (
+            <div className="overlap-records">
+              <div className="overlap-records-heading">
+                <p className="panel-heading">Overlap record</p>
+                <span className="overlap-count">{overlapRecords.length}</span>
+              </div>
+              <div className="overlap-record-list">
+                {overlapRecords.slice(-5).reverse().map((record, index) => {
+                  const catalogItem = catalogById.get(record.catalogItemId?.toString());
+                  return (
+                    <div className="overlap-record" key={`${record.occurredAt}-${index}`}>
+                      <strong>{catalogItem?.name || 'Furniture'}</strong>
+                      <span className="mono">({record.gridX}, {record.gridY}) · {record.rotation}°</span>
+                      <small>{new Date(record.occurredAt).toLocaleString()}</small>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="muted small">Invalid placements are recorded but never saved as furniture.</p>
+            </div>
+          )}
 
           <div className="floor-options">
             <p className="panel-heading">Floor &amp; grid</p>

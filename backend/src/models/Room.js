@@ -11,6 +11,18 @@ const PlacedItemSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const OverlapRecordSchema = new mongoose.Schema(
+  {
+    catalogItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'CatalogItem', required: true },
+    gridX: { type: Number, required: true, min: 0 },
+    gridY: { type: Number, required: true, min: 0 },
+    rotation: { type: Number, required: true, enum: [0, 90, 180, 270], default: 0 },
+    reason: { type: String, required: true, maxlength: 180 },
+    occurredAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
+
 const RoomSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -22,6 +34,7 @@ const RoomSchema = new mongoose.Schema(
     floorColor: { type: String, default: '#BCA17A' },
     gridColor: { type: String, default: '#8C7455' },
     placedItems: { type: [PlacedItemSchema], default: [] },
+    overlapRecords: { type: [OverlapRecordSchema], default: [] },
   },
   { timestamps: true }
 );
