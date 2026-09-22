@@ -20,10 +20,7 @@ export default function Register() {
       if (firebaseConfigured) {
         const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
         await updateProfile(credential.user, { displayName: username });
-        await sendEmailVerification(credential.user, {
-          url: `${window.location.origin}/verify-email`,
-          handleCodeInApp: false,
-        });
+        await sendEmailVerification(credential.user);
         sessionStorage.setItem('firebase_pending_username', username);
         navigate(`/verify-email?email=${encodeURIComponent(email)}`);
         return;
