@@ -29,8 +29,9 @@ async function saveRoomExtras(roomId, userId, timerSeconds, overlapRecords) {
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
   await PlacementError.deleteMany({ roomId });
-  if (overlapRecords.length) {
-    await PlacementError.insertMany(overlapRecords.map((record) => ({
+  const records = overlapRecords
+    .filter((record) => record.catalogItemId && record.reason)
+    .map((record) => ({
       catalogItemId: record.catalogItemId,
       gridX: record.gridX,
       gridY: record.gridY,
@@ -39,8 +40,8 @@ async function saveRoomExtras(roomId, userId, timerSeconds, overlapRecords) {
       occurredAt: record.occurredAt,
       roomId,
       userId,
-    })));
-  }
+    }));
+  if (records.length) await PlacementError.insertMany(records);
 }
 
 // Confirms every placedItem sits fully inside the room's own width/length
@@ -113,7 +114,11 @@ async function createRoom(req, res) {
   if (fitError) return res.status(400).json({ message: fitError });
 
   const room = await Room.create({ userId: req.user.id, roomName, dimensions, floorColor, gridColor, placedItems });
-  await saveRoomExtras(room._id, req.user.id, timerSeconds, overlapRecords);
+  try {
+    await saveRoomExtras(room._id, req.user.id, timerSeconds, overlapRecords);
+  } catch (error) {
+    console.error(`Room extras save failed for ${room._id}:`, error);
+  }
   res.status(201).json({ ...room.toObject(), timerSeconds, overlapRecords });
 }
 
@@ -135,7 +140,11 @@ async function updateRoom(req, res) {
   room.gridColor = gridColor;
   room.placedItems = placedItems;
   await room.save();
-  await saveRoomExtras(room._id, req.user.id, timerSeconds, overlapRecords);
+  try {
+    await saveRoomExtras(room._id, req.user.id, timerSeconds, overlapRecords);
+  } catch (error) {
+    console.error(`Room extras save failed for ${room._id}:`, error);
+  }
 
   res.json({ ...room.toObject(), timerSeconds, overlapRecords });
 }

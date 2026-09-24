@@ -67,7 +67,6 @@ export default function RoomEditor() {
   function getEditorSnapshot() {
     return JSON.stringify({
       roomName,
-      timerSeconds,
       dimensions,
       floorColor,
       gridColor,
@@ -517,7 +516,9 @@ export default function RoomEditor() {
       return true;
     } catch (err) {
       const details = err.response?.data?.details;
-      setStatus(details ? details.join(' ') : err.response?.data?.message || 'Could not save room.');
+      setStatus(details
+        ? details.join(' ')
+        : err.response?.data?.message || err.message || 'Could not save room.');
       return false;
     } finally {
       setSaving(false);
