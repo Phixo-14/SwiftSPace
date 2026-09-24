@@ -4,9 +4,10 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const mongoose = require('mongoose');
 const User = require('../models/User');
-const PendingUser = require('../models/PendingUser');
 const Room = require('../models/Room');
 const CatalogItem = require('../models/CatalogItem');
+const RoomTimer = require('../models/RoomTimer');
+const PlacementError = require('../models/PlacementError');
 const getFirebaseAdmin = require('../config/firebaseAdmin');
 
 const mailTransport = process.env.SMTP_HOST
@@ -99,23 +100,22 @@ async function register(req, res) {
     await existing.deleteOne();
   }
 
-  await PendingUser.deleteMany({ $or: [{ email }, { username }] });
-
   const passwordHash = await bcrypt.hash(password, 10);
   const code = createVerificationCode();
-  const pendingUser = await PendingUser.create({
+  const user = await User.create({
     username,
     email,
     passwordHash,
-    verificationCodeHash: hashVerificationCode(code),
-    verificationExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    emailVerified: false,
+    emailVerificationCodeHash: hashVerificationCode(code),
+    emailVerificationExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
   });
-  const delivered = await sendVerificationCode(pendingUser, code);
+  const delivered = await sendVerificationCode(user, code);
   res.status(201).json({
     message: delivered
       ? 'Verification code sent.'
       : 'Email could not be delivered. Check the backend terminal for the verification code.',
-    email: pendingUser.email,
+    email: user.email,
     ...(process.env.NODE_ENV !== 'production' ? { developmentCode: code } : {}),
   });
 }
@@ -301,39 +301,35 @@ async function createUser(req, res) {
 // POST /api/auth/verify-email
 async function verifyEmail(req, res) {
   const { email, code } = req.body;
-  const pendingUser = await PendingUser.findOne({ email });
-  if (!pendingUser) {
+  const user = await User.findOne({ email, emailVerified: false });
+  if (!user) {
     return res.status(400).json({ message: 'Invalid or expired verification code.' });
   }
-  if (pendingUser.verificationExpiresAt < new Date()
+  if (user.emailVerificationExpiresAt < new Date()
     || !crypto.timingSafeEqual(
-      Buffer.from(pendingUser.verificationCodeHash),
+      Buffer.from(user.emailVerificationCodeHash),
       Buffer.from(hashVerificationCode(code))
     )) {
     return res.status(400).json({ message: 'Invalid or expired verification code.' });
   }
 
-  const user = await User.create({
-    username: pendingUser.username,
-    email: pendingUser.email,
-    passwordHash: pendingUser.passwordHash,
-    role: 'user',
-    emailVerified: true,
-  });
-  await pendingUser.deleteOne();
+  user.emailVerified = true;
+  user.emailVerificationCodeHash = null;
+  user.emailVerificationExpiresAt = null;
+  await user.save();
   const token = signToken(user);
   res.json({ token, user: { id: user._id, username: user.username, email: user.email, role: user.role } });
 }
 
 // POST /api/auth/resend-verification
 async function resendVerification(req, res) {
-  const pendingUser = await PendingUser.findOne({ email: req.body.email });
-  if (pendingUser) {
+  const user = await User.findOne({ email: req.body.email, emailVerified: false });
+  if (user) {
     const code = createVerificationCode();
-    pendingUser.verificationCodeHash = hashVerificationCode(code);
-    pendingUser.verificationExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    await pendingUser.save();
-    const delivered = await sendVerificationCode(pendingUser, code);
+    user.emailVerificationCodeHash = hashVerificationCode(code);
+    user.emailVerificationExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+    const delivered = await sendVerificationCode(user, code);
     return res.json({
       message: delivered ? 'A new verification code was sent.' : 'Email delivery failed. Use the local code shown.',
       ...(!delivered || process.env.NODE_ENV !== 'production' ? { developmentCode: code } : {}),
@@ -359,6 +355,8 @@ async function deleteUser(req, res) {
 
   await Promise.all([
     Room.deleteMany({ userId: user._id }),
+    RoomTimer.deleteMany({ userId: user._id }),
+    PlacementError.deleteMany({ userId: user._id }),
     user.deleteOne(),
   ]);
   res.status(204).send();
@@ -366,29 +364,34 @@ async function deleteUser(req, res) {
 
 // GET /api/auth/admin/overview — requires an existing admin token.
 async function getAdminOverview(req, res) {
-  const [users, rooms, catalogItems, catalogCategoryItems, allRooms] = await Promise.all([
+  const [users, rooms, catalogItems, catalogCategoryItems, allRooms, timers, placementErrors] = await Promise.all([
     User.find().select('_id username email role createdAt').sort({ role: 1, createdAt: -1 }),
-    Room.find().select('roomName timerSeconds dimensions userId createdAt updatedAt').populate('userId', 'username email').sort({ updatedAt: -1 }).limit(8),
+    Room.find().select('roomName dimensions userId createdAt updatedAt').populate('userId', 'username email').sort({ updatedAt: -1 }).limit(8),
     CatalogItem.countDocuments(),
     CatalogItem.find().select('category'),
     Room.find()
-      .select('roomName dimensions placedItems overlapRecords createdAt userId')
-      .populate('userId', 'username')
-      .populate('overlapRecords.catalogItemId', 'name'),
+      .select('roomName dimensions placedItems createdAt userId')
+      .populate('userId', 'username'),
+    RoomTimer.find(),
+    PlacementError.find().populate('catalogItemId', 'name'),
   ]);
+
+  const timerByRoom = new Map(timers.map((timer) => [timer.roomId.toString(), timer.seconds]));
+  rooms.forEach((room) => { room.timerSeconds = timerByRoom.get(room._id.toString()) || 0; });
 
   const totalPlacements = allRooms.reduce((total, room) => total + room.placedItems.length, 0);
   const categoryCounts = catalogCategoryItems.reduce((counts, item) => {
     counts[item.category] = (counts[item.category] || 0) + 1;
     return counts;
   }, {});
-  const overlapRecords = allRooms
-    .flatMap((room) => room.overlapRecords.map((record) => ({
+  const roomById = new Map(allRooms.map((room) => [room._id.toString(), room]));
+  const overlapRecords = placementErrors
+    .map((record) => ({
       ...record.toObject(),
-      roomId: room._id,
-      roomName: room.roomName,
-      username: room.userId?.username || 'Unknown user',
-    })))
+      roomId: record.roomId,
+      roomName: roomById.get(record.roomId.toString())?.roomName || 'Unknown room',
+      username: roomById.get(record.roomId.toString())?.userId?.username || 'Unknown user',
+    }))
     .sort((first, second) => new Date(second.occurredAt) - new Date(first.occurredAt));
   const totalArea = allRooms.reduce(
     (total, room) => total + room.dimensions.width * room.dimensions.length,

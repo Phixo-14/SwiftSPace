@@ -1,5 +1,35 @@
 const Room = require('../models/Room');
 const CatalogItem = require('../models/CatalogItem');
+const RoomTimer = require('../models/RoomTimer');
+const PlacementError = require('../models/PlacementError');
+
+async function getRoomExtras(roomId) {
+  const [timer, placementErrors] = await Promise.all([
+    RoomTimer.findOne({ roomId }).select('seconds'),
+    PlacementError.find({ roomId }).sort({ occurredAt: 1 }),
+  ]);
+  return {
+    timerSeconds: timer?.seconds || 0,
+    overlapRecords: placementErrors,
+  };
+}
+
+async function saveRoomExtras(roomId, userId, timerSeconds, overlapRecords) {
+  await RoomTimer.findOneAndUpdate(
+    { roomId },
+    { roomId, userId, seconds: timerSeconds },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  await PlacementError.deleteMany({ roomId });
+  if (overlapRecords.length) {
+    await PlacementError.insertMany(overlapRecords.map((record) => ({
+      ...record,
+      roomId,
+      userId,
+      _id: undefined,
+    })));
+  }
+}
 
 // Confirms every placedItem sits fully inside the room's own width/length
 // and references a catalog item that actually exists.
@@ -59,7 +89,8 @@ async function getRoomById(req, res) {
   if (room.userId.toString() !== req.user.id) {
     return res.status(403).json({ message: 'You do not have access to this room.' });
   }
-  res.json(room);
+  const extras = await getRoomExtras(room._id);
+  res.json({ ...room.toObject(), ...extras });
 }
 
 // POST /api/rooms
@@ -69,8 +100,9 @@ async function createRoom(req, res) {
   const fitError = await assertItemsFitAndExist(dimensions, placedItems);
   if (fitError) return res.status(400).json({ message: fitError });
 
-  const room = await Room.create({ userId: req.user.id, roomName, timerSeconds, dimensions, floorColor, gridColor, placedItems, overlapRecords });
-  res.status(201).json(room);
+  const room = await Room.create({ userId: req.user.id, roomName, dimensions, floorColor, gridColor, placedItems });
+  await saveRoomExtras(room._id, req.user.id, timerSeconds, overlapRecords);
+  res.status(201).json({ ...room.toObject(), timerSeconds, overlapRecords });
 }
 
 // PUT /api/rooms/:id
@@ -86,15 +118,14 @@ async function updateRoom(req, res) {
   if (fitError) return res.status(400).json({ message: fitError });
 
   room.roomName = roomName;
-  room.timerSeconds = timerSeconds;
   room.dimensions = dimensions;
   room.floorColor = floorColor;
   room.gridColor = gridColor;
   room.placedItems = placedItems;
-  room.overlapRecords = overlapRecords;
   await room.save();
+  await saveRoomExtras(room._id, req.user.id, timerSeconds, overlapRecords);
 
-  res.json(room);
+  res.json({ ...room.toObject(), timerSeconds, overlapRecords });
 }
 
 // DELETE /api/rooms/:id
@@ -104,7 +135,11 @@ async function deleteRoom(req, res) {
   if (room.userId.toString() !== req.user.id) {
     return res.status(403).json({ message: 'You do not have access to this room.' });
   }
-  await room.deleteOne();
+  await Promise.all([
+    room.deleteOne(),
+    RoomTimer.deleteOne({ roomId: room._id }),
+    PlacementError.deleteMany({ roomId: room._id }),
+  ]);
   res.status(204).send();
 }
 
