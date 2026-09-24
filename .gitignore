@@ -1,0 +1,19 @@
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+**/firebase-service-account.json
+
+# Dependencies and build output
+node_modules/
+dist/
+
+# Local database backups
+*.bson
+*.metadata.json
+SwiftSpaceBackups*/
+backend/backup/
+
+# Local logs and editor files
+*.log
+.DS_Store

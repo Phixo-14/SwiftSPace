@@ -84,11 +84,26 @@ export default function Register() {
           <form onSubmit={handleSubmit}>
             <label>
               Name
-              <input value={username} onChange={(e) => setUsername(e.target.value)} minLength={3} required />
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="e.g. Juan Dela Cruz"
+                pattern="[A-Za-z]+(?: [A-Za-z]+)*"
+                title="Name can contain letters and spaces only."
+                minLength={3}
+                maxLength={30}
+                required
+              />
             </label>
             <label>
               Email
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="e.g. juan@example.com"
+                required
+              />
             </label>
             <label>
               Password
@@ -96,6 +111,8 @@ export default function Register() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 minLength={8}
+                pattern="(?=.*[^A-Za-z0-9]).{8,}"
+                title="Password must be at least 8 characters and include a special character."
                 required
               />
             </label>

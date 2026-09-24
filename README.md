@@ -13,6 +13,68 @@ from your data model section, JWT auth, Joi validation, projection on the
 dashboard query, and the `userId` index — plus a real React canvas so you
 can actually place and rotate furniture on a grid and save it.
 
+## MERN Architecture
+
+SwiftSpace follows the MERN architecture by separating the user interface,
+API server, and database layers:
+
+- **React frontend:** The Vite-powered React application contains the pages,
+  authentication screens, dashboard, admin dashboard, and room editor. React
+  components use the shared Axios client in `frontend/src/api.js` to send HTTP
+  requests to the backend API. The client stores the JWT and attaches it to
+  protected requests as a Bearer token.
+- **Express and Node.js backend:** The Node.js server in `backend/server.js`
+  creates the Express application, enables security middleware and CORS, and
+  mounts the authentication, catalog, and room routes under `/api`. Route
+  middleware validates request bodies with Joi and checks JWT authorization
+  before controllers process protected operations.
+- **MongoDB with Mongoose:** The backend connects to MongoDB Atlas through the
+  `MONGO_URI` environment variable. Mongoose models define the `User`,
+  `Room`, `CatalogItem`, and `PendingUser` document structures. Controllers
+  use these models to query and update MongoDB, while references such as a
+  room's `userId` enforce ownership and indexes improve dashboard queries.
+- **Firebase Authentication:** Firebase handles email/password identity and
+  email verification. After Firebase authentication succeeds, the backend
+  verifies the Firebase token and synchronizes the user's identity fields into
+  MongoDB. Firebase passwords remain managed by Firebase and are never copied
+  into MongoDB.
+
+### MERN Architecture Diagram
+
+```mermaid
+flowchart LR
+    U[User Browser or Mobile Device]
+    R[React Frontend<br/>Vite UI and Room Editor]
+    A[Axios API Client<br/>JWT Bearer Token]
+    E[Express API<br/>Node.js Server]
+    M[Middleware<br/>CORS, Joi, JWT Auth, Rate Limit]
+    C[Controllers and Routes<br/>Auth, Rooms, Catalog]
+    S[Mongoose Models<br/>User, Room, CatalogItem]
+    DB[(MongoDB Atlas)]
+    F[Firebase Authentication<br/>Email and Verification]
+
+    U --> R
+    R --> A
+    A -->|HTTPS JSON requests| E
+    E --> M
+    M --> C
+    C --> S
+    S -->|Queries and updates| DB
+    R -->|Sign in and verify email| F
+    F -->|Firebase ID token| A
+    A -->|Token verification and user sync| E
+```
+
+Typical room request flow:
+
+1. A user changes a room in the React room editor.
+2. React sends a JSON request through Axios to an Express endpoint such as
+   `POST /api/rooms` or `PUT /api/rooms/:id`.
+3. Express middleware validates the request and verifies the JWT.
+4. The room controller uses the Mongoose `Room` model to validate ownership
+   and save the room document in MongoDB Atlas.
+5. Express returns a JSON response, and React updates the visible dashboard.
+
 ```
 mern-room-designer/
 ├── backend/     Node.js + Express + MongoDB API

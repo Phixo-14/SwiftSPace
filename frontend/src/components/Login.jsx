@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -12,6 +12,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [resetMessage, setResetMessage] = useState('');
+  const [retryAfter, setRetryAfter] = useState(0);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -55,6 +56,10 @@ export default function Login() {
         'auth/wrong-password': 'Incorrect Firebase email or password.',
         'auth/user-disabled': 'This Firebase account has been disabled.',
       };
+      const retrySeconds = Number(err.response?.headers?.['retry-after']);
+      if (err.response?.status === 429) {
+        setRetryAfter(retrySeconds || 900);
+      }
       const errorMessage = err.code === 'ECONNABORTED'
         ? 'The server took too long to respond. Please try again.'
         : err.response?.data?.message
@@ -65,6 +70,14 @@ export default function Login() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (retryAfter <= 0) return undefined;
+    const timer = window.setInterval(() => {
+      setRetryAfter((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [retryAfter]);
 
   async function handlePasswordReset() {
     setError('');
@@ -116,16 +129,29 @@ export default function Login() {
           <form onSubmit={handleSubmit}>
             <label>
               Email
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="e.g. juan@example.com"
+                required
+              />
             </label>
             <label>
               Password
-              <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <PasswordInput
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                minLength={8}
+                pattern="(?=.*[^A-Za-z0-9]).{8,}"
+                title="Password must be at least 8 characters and include a special character."
+                required
+              />
             </label>
             {error && <p className="form-error">{error}</p>}
             {resetMessage && <p className="form-success">{resetMessage}</p>}
-            <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Signing in…' : 'Sign in'}
+            <button type="submit" className="btn-primary" disabled={loading || retryAfter > 0}>
+              {loading ? 'Signing in…' : retryAfter > 0 ? `Try again in ${retryAfter}s` : 'Sign in'}
             </button>
             {firebaseConfigured && <button type="button" className="btn-link" onClick={handlePasswordReset}>Forgot password?</button>}
           </form>

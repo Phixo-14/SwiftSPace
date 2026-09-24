@@ -4,14 +4,14 @@ const Joi = require('joi');
 // `schema.validate(req.body)` directly so this stays framework-agnostic.
 
 const registerSchema = Joi.object({
-  username: Joi.string().alphanum().min(3).max(30).required(),
+  username: Joi.string().trim().min(3).max(30).pattern(/^[A-Za-z]+(?: [A-Za-z]+)*$/).required(),
   email: Joi.string().email({ tlds: false }).required(),
-  password: Joi.string().min(8).max(72).required(),
+  password: Joi.string().min(8).max(72).pattern(/[^A-Za-z0-9]/).required(),
 });
 
 const loginSchema = Joi.object({
   email: Joi.string().email({ tlds: false }).required(),
-  password: Joi.string().required(),
+  password: Joi.string().min(8).max(72).pattern(/[^A-Za-z0-9]/).required(),
 });
 
 const verificationSchema = Joi.object({
