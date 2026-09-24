@@ -4,6 +4,43 @@ import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 import PasswordInput from './PasswordInput.jsx';
 
+function getPredictiveAnalysis(overview) {
+  const monthlyRooms = overview?.monthlyRooms || [];
+  const counts = monthlyRooms.map(({ count }) => Number(count) || 0);
+  const recentCounts = counts.slice(-3);
+  const averageRecent = recentCounts.length
+    ? recentCounts.reduce((total, count) => total + count, 0) / recentCounts.length
+    : 0;
+  const averageAll = counts.length
+    ? counts.reduce((total, count) => total + count, 0) / counts.length
+    : 0;
+  const slope = counts.length > 1
+    ? counts.reduce((total, count, index) => total + (count - counts[0]) * index, 0)
+      / counts.reduce((total, _, index) => total + index ** 2, 0)
+    : 0;
+  const forecast = Math.max(0, Math.round(averageRecent + slope));
+  const trend = slope > 0.25 ? 'Growing' : slope < -0.25 ? 'Cooling' : 'Steady';
+  const trendMessage = trend === 'Growing'
+    ? `Activity is trending up by about ${slope.toFixed(1)} rooms per month.`
+    : trend === 'Cooling'
+      ? `Activity is trending down by about ${Math.abs(slope).toFixed(1)} rooms per month.`
+      : 'Room creation has stayed broadly level across the available history.';
+  const overlapRate = overview?.stats?.placements
+    ? (overview.stats.overlaps / overview.stats.placements) * 100
+    : 0;
+  const confidence = counts.length >= 6 && counts.some(Boolean) ? 'Moderate' : counts.some(Boolean) ? 'Early' : 'Not enough data';
+
+  return {
+    forecast,
+    trend,
+    trendMessage,
+    confidence,
+    averageRecent: averageRecent.toFixed(1),
+    averageAll: averageAll.toFixed(1),
+    overlapRate: overlapRate.toFixed(1),
+  };
+}
+
 export default function AdminDashboard() {
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -116,6 +153,7 @@ export default function AdminDashboard() {
     if (first.role === second.role) return 0;
     return first.role === 'admin' ? -1 : 1;
   });
+  const prediction = overview ? getPredictiveAnalysis(overview) : null;
 
   return (
     <div className="page admin-page">
@@ -189,6 +227,26 @@ export default function AdminDashboard() {
                   <div><span>Rooms per user</span><strong>{overview.stats.users ? (overview.stats.rooms / overview.stats.users).toFixed(1) : '0.0'}</strong></div>
                 </div>
               </div>
+            </section>
+
+            <section className="predictive-panel" aria-labelledby="predictive-heading">
+              <div className="section-heading">
+                <div><p className="eyebrow">Predictive analysis</p><h3 id="predictive-heading">What the next month may look like</h3></div>
+                <span className="prediction-confidence">{prediction.confidence} confidence</span>
+              </div>
+              <div className="prediction-grid">
+                <div className="prediction-lead">
+                  <span className="stat-label">Projected room creations</span>
+                  <strong>{prediction.forecast}</strong>
+                  <span className="muted small">next calendar month</span>
+                </div>
+                <div className="prediction-insights">
+                  <div><span>Current trajectory</span><strong className={`prediction-trend ${prediction.trend.toLowerCase()}`}>{prediction.trend}</strong><small>{prediction.trendMessage}</small></div>
+                  <div><span>Recent monthly average</span><strong>{prediction.averageRecent}</strong><small>Compared with {prediction.averageAll} across all six months</small></div>
+                  <div><span>Overlap risk signal</span><strong>{prediction.overlapRate}%</strong><small>Overlap attempts per furniture placement</small></div>
+                </div>
+              </div>
+              <p className="prediction-method">Estimate uses a linear trend across the six-month room history, blended with the recent three-month average.</p>
             </section>
 
             <section className="admin-section overlap-activity-section" id="admin-overlaps">

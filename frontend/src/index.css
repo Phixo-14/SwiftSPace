@@ -635,6 +635,99 @@ a {
   font-weight: 400;
 }
 
+.predictive-panel {
+  padding: 1.25rem;
+  border: 1px solid rgba(212, 195, 138, 0.42);
+  border-radius: 8px;
+  background: linear-gradient(135deg, #1b2c25 0%, #17231f 58%, #2a2a20 100%);
+}
+
+.prediction-confidence {
+  padding: 0.3rem 0.55rem;
+  border: 1px solid rgba(212, 195, 138, 0.5);
+  border-radius: 4px;
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.prediction-grid {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.75fr) minmax(0, 1.5fr);
+  gap: 2rem;
+  align-items: stretch;
+}
+
+.prediction-lead {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 150px;
+  padding: 1rem;
+  border-left: 3px solid var(--gold);
+  background: rgba(212, 195, 138, 0.07);
+}
+
+.prediction-lead strong {
+  margin: 0.35rem 0;
+  color: var(--accent-strong);
+  font-family: var(--font-display);
+  font-size: 54px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.prediction-insights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: center;
+}
+
+.prediction-insights div {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.prediction-insights span,
+.prediction-insights small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.prediction-insights strong {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.prediction-insights small {
+  line-height: 1.4;
+}
+
+.prediction-trend.growing {
+  color: var(--accent-strong);
+}
+
+.prediction-trend.cooling {
+  color: var(--gold);
+}
+
+.prediction-trend.steady {
+  color: var(--text);
+}
+
+.prediction-method {
+  margin: 1.1rem 0 0;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(212, 195, 138, 0.2);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .overlap-activity-section {
   margin-bottom: 0;
 }
@@ -962,6 +1055,11 @@ a {
   }
 
   .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .prediction-grid,
+  .prediction-insights {
     grid-template-columns: 1fr;
   }
 
