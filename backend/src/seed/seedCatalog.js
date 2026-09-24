@@ -24,7 +24,19 @@ async function seed() {
   process.exit(0);
 }
 
-seed().catch((err) => {
-  console.error('Seed failed:', err);
-  process.exit(1);
-});
+async function ensureCatalog() {
+  const count = await CatalogItem.countDocuments();
+  if (count > 0) return false;
+  await CatalogItem.insertMany(ITEMS);
+  console.log(`Catalog was empty; seeded ${ITEMS.length} catalog items.`);
+  return true;
+}
+
+if (require.main === module) {
+  seed().catch((err) => {
+    console.error('Seed failed:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = { ensureCatalog };

@@ -9,6 +9,8 @@ const bcrypt = require('bcryptjs');
 const connectDB = require('./src/config/db');
 const User = require('./src/models/User');
 const { syncFirebaseUsersFromFirebase } = require('./src/controllers/authController');
+const getFirebaseAdmin = require('./src/config/firebaseAdmin');
+const { ensureCatalog } = require('./src/seed/seedCatalog');
 
 const authRoutes = require('./src/routes/authRoutes');
 const catalogRoutes = require('./src/routes/catalogRoutes');
@@ -93,7 +95,14 @@ const PORT = process.env.PORT || 5000;
 connectDB()
   .then(async () => {
     await ensureAdminAccount();
+    await ensureCatalog();
     app.listen(PORT, () => console.log(`Room Designer API listening on port ${PORT}`));
+    const firebaseAdminConfigured = Boolean(getFirebaseAdmin());
+    if (!firebaseAdminConfigured) {
+      console.warn('Firebase synchronization disabled: Firebase Admin credentials are not configured.');
+      return;
+    }
+
     try {
       const result = await syncFirebaseUsersFromFirebase();
       console.log(`Firebase users synchronized: ${result.synced}.`);
