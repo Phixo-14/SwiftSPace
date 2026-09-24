@@ -17,19 +17,34 @@ const FURNITURE_CATEGORIES = [
   { value: 'lighting', label: 'Lighting', icon: '💡' },
   { value: 'surface', label: 'Tables & Surfaces', icon: '▱' },
 ];
+
+function readDraft(key) {
+  try {
+    const value = window.localStorage.getItem(key);
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function RoomEditor() {
   const { id } = useParams();
   const isNew = !id;
   const navigate = useNavigate();
+  const draftStorageKey = `studio-grid-draft:${id || 'new'}`;
+  const storedDraft = readDraft(draftStorageKey);
 
   const [catalog, setCatalog] = useState([]);
-  const [roomName, setRoomName] = useState('Untitled Studio');
-  const [dimensions, setDimensions] = useState(DEFAULT_DIMENSIONS);
-  const [floorColor, setFloorColor] = useState(FLOOR_OPTIONS[0].floor);
-  const [gridColor, setGridColor] = useState(FLOOR_OPTIONS[0].grid);
-  const [workspaceColor, setWorkspaceColor] = useState(FLOOR_OPTIONS[0].workspace);
-  const [placedItems, setPlacedItems] = useState([]);
-  const [overlapRecords, setOverlapRecords] = useState([]);
+  const [roomName, setRoomName] = useState(storedDraft?.roomName || 'Untitled Studio');
+  const [dimensions, setDimensions] = useState(storedDraft?.dimensions || DEFAULT_DIMENSIONS);
+  const [floorColor, setFloorColor] = useState(storedDraft?.floorColor || FLOOR_OPTIONS[0].floor);
+  const [gridColor, setGridColor] = useState(storedDraft?.gridColor || FLOOR_OPTIONS[0].grid);
+  const [workspaceColor, setWorkspaceColor] = useState(() => {
+    const draftFloor = FLOOR_OPTIONS.find((option) => option.floor === storedDraft?.floorColor);
+    return draftFloor?.workspace || FLOOR_OPTIONS[0].workspace;
+  });
+  const [placedItems, setPlacedItems] = useState(storedDraft?.placedItems || []);
+  const [overlapRecords, setOverlapRecords] = useState(storedDraft?.overlapRecords || []);
   const [armedItemId, setArmedItemId] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -41,7 +56,6 @@ export default function RoomEditor() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
-  const draftStorageKey = `studio-grid-draft:${id || 'new'}`;
 
   // Load catalog once, and the existing room if we're editing one.
   useEffect(() => {
