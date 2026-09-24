@@ -19,6 +19,18 @@ export default function Login() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    if (!email.trim()) {
+      setError('Email is required.');
+      return;
+    }
+    if (!email.includes('@')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    if (password.length < 8 || !/[^A-Za-z0-9]/.test(password)) {
+      setError('Password must be at least 8 characters and include a special character.');
+      return;
+    }
     setLoading(true);
     try {
       if (firebaseConfigured) {
@@ -129,7 +141,7 @@ export default function Login() {
           <p className="eyebrow">Studio Grid</p>
           <h1>Sign in</h1>
           <p className="auth-sub">Pick up your saved layouts where you left off.</p>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} noValidate>
             <label>
               Email
               <input

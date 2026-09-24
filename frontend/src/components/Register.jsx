@@ -16,6 +16,18 @@ export default function Register() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    if (!/^[A-Za-z]+(?: [A-Za-z]+)*$/.test(username.trim()) || username.trim().length < 3) {
+      setError('Name must be at least 3 characters and contain letters and spaces only.');
+      return;
+    }
+    if (!email.includes('@')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    if (password.length < 8 || !/[^A-Za-z0-9]/.test(password)) {
+      setError('Password must be at least 8 characters and include a special character.');
+      return;
+    }
     setLoading(true);
     try {
       if (firebaseConfigured) {
@@ -81,7 +93,7 @@ export default function Register() {
           <p className="eyebrow">Studio Grid</p>
           <h1>Create your account</h1>
           <p className="auth-sub">Start designing and save your room layouts in Studio Grid.</p>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} noValidate>
             <label>
               Name
               <input

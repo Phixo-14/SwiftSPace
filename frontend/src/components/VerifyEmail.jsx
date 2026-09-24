@@ -60,6 +60,16 @@ export default function VerifyEmail() {
     setLoading(true);
     setError('');
     setMessage('');
+    if (!email.includes('@')) {
+      setError('Please enter a valid email address.');
+      setLoading(false);
+      return;
+    }
+    if (!/^\d{6}$/.test(code)) {
+      setError('Verification code must be 6 digits.');
+      setLoading(false);
+      return;
+    }
     try {
       const { data } = await api.post('/auth/verify-email', { email, code });
       login(data.token, data.user);
@@ -95,7 +105,7 @@ export default function VerifyEmail() {
               ? 'Check your inbox and click the Firebase verification link to continue.'
               : 'Enter the six-digit code sent to your email address.'}
         </p>
-        {!firebaseMode && !firebaseLinkHandled && <form onSubmit={handleSubmit}>
+        {!firebaseMode && !firebaseLinkHandled && <form onSubmit={handleSubmit} noValidate>
           <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
           <label>Verification code<input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} required /></label>
           {error && <p className="form-error">{error}</p>}
