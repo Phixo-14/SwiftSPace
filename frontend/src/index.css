@@ -236,6 +236,62 @@ a {
   color: var(--danger);
 }
 
+.btn-danger {
+  border: 1px solid rgba(217, 122, 109, 0.75);
+  border-radius: 6px;
+  padding: 0.65rem 0.9rem;
+  background: var(--danger);
+  color: #1c0e0b;
+  font-weight: 600;
+}
+
+.btn-danger:hover {
+  background: #e9988c;
+}
+
+.delete-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(4, 10, 8, 0.76);
+}
+
+.delete-dialog {
+  width: min(100%, 28rem);
+  padding: 1.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--panel-raised);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.4);
+}
+
+.delete-dialog-icon {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-bottom: 1.1rem;
+  place-items: center;
+  border: 1px solid rgba(217, 122, 109, 0.6);
+  border-radius: 50%;
+  color: var(--danger);
+  font-size: 1.5rem;
+}
+
+.delete-dialog h2 {
+  margin-bottom: 0.45rem;
+  font-size: 1.35rem;
+}
+
+.delete-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 1.4rem;
+}
+
 .form-error {
   color: var(--danger);
   font-size: 13px;

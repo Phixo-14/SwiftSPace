@@ -8,6 +8,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingRoomId, setDeletingRoomId] = useState(null);
+  const [roomPendingDeletion, setRoomPendingDeletion] = useState(null);
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -34,14 +35,19 @@ export default function Dashboard() {
     navigate('/login');
   }
 
-  async function handleDelete(room) {
-    if (!window.confirm(`Delete "${room.roomName}"? This cannot be undone.`)) return;
+  function requestDelete(room) {
+    setRoomPendingDeletion(room);
+  }
 
-    setDeletingRoomId(room._id);
+  async function confirmDelete() {
+    if (!roomPendingDeletion) return;
+
+    setDeletingRoomId(roomPendingDeletion._id);
     setError('');
     try {
-      await api.delete(`/rooms/${room._id}`);
-      setRooms((currentRooms) => currentRooms.filter(({ _id }) => _id !== room._id));
+      await api.delete(`/rooms/${roomPendingDeletion._id}`);
+      setRooms((currentRooms) => currentRooms.filter(({ _id }) => _id !== roomPendingDeletion._id));
+      setRoomPendingDeletion(null);
     } catch {
       setError('Could not delete that room.');
     } finally {
@@ -101,7 +107,7 @@ export default function Dashboard() {
                 className="delete-room-btn"
                 type="button"
                 aria-label={`Delete ${room.roomName}`}
-                onClick={() => handleDelete(room)}
+                onClick={() => requestDelete(room)}
                 disabled={deletingRoomId === room._id}
               >
                 ✕
@@ -116,6 +122,25 @@ export default function Dashboard() {
           </article>
         ))}
       </main>
+
+      {roomPendingDeletion && (
+        <div className="delete-dialog-backdrop" role="presentation">
+          <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
+            <div className="delete-dialog-icon" aria-hidden="true">×</div>
+            <p className="eyebrow">Remove layout</p>
+            <h2 id="delete-dialog-title">Delete {roomPendingDeletion.roomName}?</h2>
+            <p className="muted">This room and its furniture arrangement will be permanently removed.</p>
+            <div className="delete-dialog-actions">
+              <button className="btn-ghost" type="button" onClick={() => setRoomPendingDeletion(null)} disabled={deletingRoomId !== null}>
+                Keep room
+              </button>
+              <button className="btn-danger" type="button" onClick={confirmDelete} disabled={deletingRoomId !== null}>
+                {deletingRoomId ? 'Deleting…' : 'Delete room'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
