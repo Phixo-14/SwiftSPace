@@ -59,9 +59,12 @@ export default function Login() {
       if (err.response?.status === 429) {
         setRetryAfter(retrySeconds || 900);
       }
+      const validationDetails = err.response?.data?.details;
       const errorMessage = err.code === 'ECONNABORTED'
         ? 'The server took too long to respond. Please try again.'
-        : err.response?.data?.message
+        : validationDetails?.length
+          ? `${err.response?.data?.message || 'Validation failed.'} ${validationDetails.join(' ')}`
+          : err.response?.data?.message
           || firebaseMessages[err.code]
             || err.message
           || 'Could not sign in.';
