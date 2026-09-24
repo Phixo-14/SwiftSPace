@@ -376,8 +376,11 @@ async function getAdminOverview(req, res) {
     PlacementError.find().populate('catalogItemId', 'name'),
   ]);
 
-  const timerByRoom = new Map(timers.map((timer) => [timer.roomId.toString(), timer.seconds]));
-  rooms.forEach((room) => { room.timerSeconds = timerByRoom.get(room._id.toString()) || 0; });
+  const timerByRoom = new Map(timers.map((timer) => [timer.roomId.toString(), Number(timer.seconds) || 0]));
+  const recentRooms = rooms.map((room) => ({
+    ...room.toObject(),
+    timerSeconds: timerByRoom.get(room._id.toString()) ?? 0,
+  }));
 
   const totalPlacements = allRooms.reduce((total, room) => total + room.placedItems.length, 0);
   const categoryCounts = catalogCategoryItems.reduce((counts, item) => {
@@ -421,7 +424,7 @@ async function getAdminOverview(req, res) {
       categoryCounts,
     },
     users,
-    recentRooms: rooms,
+    recentRooms,
     monthlyRooms,
     recentOverlaps: overlapRecords.slice(0, 8),
   });

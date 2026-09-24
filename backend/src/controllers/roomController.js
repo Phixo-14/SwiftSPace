@@ -15,17 +15,10 @@ async function getRoomExtras(roomId) {
 }
 
 async function saveRoomExtras(roomId, userId, timerSeconds, overlapRecords) {
-  await Promise.all([
-    RoomTimer.createCollection().catch((error) => {
-      if (error.code !== 48) throw error;
-    }),
-    PlacementError.createCollection().catch((error) => {
-      if (error.code !== 48) throw error;
-    }),
-  ]);
+  const safeSeconds = Number.isFinite(Number(timerSeconds)) ? Number(timerSeconds) : 0;
   await RoomTimer.findOneAndUpdate(
     { roomId },
-    { $set: { userId, seconds: timerSeconds || 0 } },
+    { $set: { userId, seconds: safeSeconds } },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
   await PlacementError.deleteMany({ roomId });
@@ -91,7 +84,15 @@ async function getRooms(req, res) {
   const rooms = await Room.find({ userId: req.user.id })
     .select('roomName dimensions createdAt updatedAt')
     .sort({ updatedAt: -1 });
-  res.json(rooms);
+
+  const roomIds = rooms.map((room) => room._id);
+  const timers = await RoomTimer.find({ roomId: { $in: roomIds } }).select('roomId seconds').lean();
+  const timerByRoom = new Map(timers.map((timer) => [timer.roomId.toString(), Number(timer.seconds) || 0]));
+
+  res.json(rooms.map((room) => ({
+    ...room.toObject(),
+    timerSeconds: timerByRoom.get(room._id.toString()) ?? 0,
+  })));
 }
 
 // GET /api/rooms/:id
@@ -134,19 +135,19 @@ async function updateRoom(req, res) {
   const fitError = await assertItemsFitAndExist(dimensions, placedItems);
   if (fitError) return res.status(400).json({ message: fitError });
 
-  room.roomName = roomName;
-  room.dimensions = dimensions;
-  room.floorColor = floorColor;
-  room.gridColor = gridColor;
-  room.placedItems = placedItems;
-  await room.save();
   try {
+    room.roomName = roomName;
+    room.dimensions = dimensions;
+    room.floorColor = floorColor;
+    room.gridColor = gridColor;
+    room.placedItems = placedItems;
+    await room.save();
     await saveRoomExtras(room._id, req.user.id, timerSeconds, overlapRecords);
+    res.json({ ...room.toObject(), timerSeconds, overlapRecords });
   } catch (error) {
-    console.error(`Room extras save failed for ${room._id}:`, error);
+    console.error(`Room save failed for ${room._id}:`, error);
+    res.status(500).json({ message: `Could not save room: ${error.message}` });
   }
-
-  res.json({ ...room.toObject(), timerSeconds, overlapRecords });
 }
 
 // DELETE /api/rooms/:id
