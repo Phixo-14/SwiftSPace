@@ -55,6 +55,7 @@ const overlapRecordSchema = Joi.object({
 // can't know the sibling dimensions value of each array item.
 const roomSchema = Joi.object({
   roomName: Joi.string().trim().min(1).max(60).required(),
+  timerSeconds: Joi.number().integer().min(0).max(31536000).default(0),
   dimensions: Joi.object({
     width: Joi.number().integer().min(1).max(50).required(),
     length: Joi.number().integer().min(1).max(50).required(),

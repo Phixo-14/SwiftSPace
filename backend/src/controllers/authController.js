@@ -368,7 +368,7 @@ async function deleteUser(req, res) {
 async function getAdminOverview(req, res) {
   const [users, rooms, catalogItems, catalogCategoryItems, allRooms] = await Promise.all([
     User.find().select('_id username email role createdAt').sort({ role: 1, createdAt: -1 }),
-    Room.find().populate('userId', 'username email').sort({ updatedAt: -1 }).limit(8),
+    Room.find().select('roomName timerSeconds dimensions userId createdAt updatedAt').populate('userId', 'username email').sort({ updatedAt: -1 }).limit(8),
     CatalogItem.countDocuments(),
     CatalogItem.find().select('category'),
     Room.find()

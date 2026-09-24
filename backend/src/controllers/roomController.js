@@ -64,12 +64,12 @@ async function getRoomById(req, res) {
 
 // POST /api/rooms
 async function createRoom(req, res) {
-  const { roomName, dimensions, floorColor, gridColor, placedItems, overlapRecords } = req.body;
+  const { roomName, timerSeconds, dimensions, floorColor, gridColor, placedItems, overlapRecords } = req.body;
 
   const fitError = await assertItemsFitAndExist(dimensions, placedItems);
   if (fitError) return res.status(400).json({ message: fitError });
 
-  const room = await Room.create({ userId: req.user.id, roomName, dimensions, floorColor, gridColor, placedItems, overlapRecords });
+  const room = await Room.create({ userId: req.user.id, roomName, timerSeconds, dimensions, floorColor, gridColor, placedItems, overlapRecords });
   res.status(201).json(room);
 }
 
@@ -81,11 +81,12 @@ async function updateRoom(req, res) {
     return res.status(403).json({ message: 'You do not have access to this room.' });
   }
 
-  const { roomName, dimensions, floorColor, gridColor, placedItems, overlapRecords } = req.body;
+  const { roomName, timerSeconds, dimensions, floorColor, gridColor, placedItems, overlapRecords } = req.body;
   const fitError = await assertItemsFitAndExist(dimensions, placedItems);
   if (fitError) return res.status(400).json({ message: fitError });
 
   room.roomName = roomName;
+  room.timerSeconds = timerSeconds;
   room.dimensions = dimensions;
   room.floorColor = floorColor;
   room.gridColor = gridColor;

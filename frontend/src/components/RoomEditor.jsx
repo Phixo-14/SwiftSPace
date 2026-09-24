@@ -36,6 +36,8 @@ export default function RoomEditor() {
 
   const [catalog, setCatalog] = useState([]);
   const [roomName, setRoomName] = useState(storedDraft?.roomName || 'Untitled Studio');
+  const [timerSeconds, setTimerSeconds] = useState(storedDraft?.timerSeconds || 0);
+  const [timerRunning, setTimerRunning] = useState(false);
   const [dimensions, setDimensions] = useState(storedDraft?.dimensions || DEFAULT_DIMENSIONS);
   const [floorColor, setFloorColor] = useState(storedDraft?.floorColor || FLOOR_OPTIONS[0].floor);
   const [gridColor, setGridColor] = useState(storedDraft?.gridColor || FLOOR_OPTIONS[0].grid);
@@ -68,6 +70,7 @@ export default function RoomEditor() {
       try {
         const draft = JSON.parse(savedDraft);
         setRoomName(draft.roomName || 'Untitled Studio');
+        setTimerSeconds(draft.timerSeconds || 0);
         setDimensions(draft.dimensions || DEFAULT_DIMENSIONS);
         setFloorColor(draft.floorColor || FLOOR_OPTIONS[0].floor);
         setGridColor(draft.gridColor || FLOOR_OPTIONS[0].grid);
@@ -95,6 +98,7 @@ export default function RoomEditor() {
             validCatalogIds.has(item.catalogItemId?.toString())
           );
           setRoomName(roomRes.data.roomName);
+          setTimerSeconds(roomRes.data.timerSeconds || 0);
           setDimensions(roomRes.data.dimensions);
           setFloorColor(roomRes.data.floorColor || FLOOR_OPTIONS[0].floor);
           setGridColor(roomRes.data.gridColor || FLOOR_OPTIONS[0].grid);
@@ -125,13 +129,22 @@ export default function RoomEditor() {
     if (loading || !draftReady) return;
     window.localStorage.setItem(draftStorageKey, JSON.stringify({
       roomName,
+      timerSeconds,
       dimensions,
       floorColor,
       gridColor,
       placedItems,
       overlapRecords,
     }));
-  }, [dimensions, draftReady, draftStorageKey, floorColor, gridColor, loading, overlapRecords, placedItems, roomName]);
+  }, [dimensions, draftReady, draftStorageKey, floorColor, gridColor, loading, overlapRecords, placedItems, roomName, timerSeconds]);
+
+  useEffect(() => {
+    if (!timerRunning) return undefined;
+    const timer = window.setInterval(() => {
+      setTimerSeconds((seconds) => seconds + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [timerRunning]);
 
   const catalogById = useMemo(() => {
     const map = new Map();
@@ -435,7 +448,7 @@ export default function RoomEditor() {
     const validPlacedItems = placedItems.filter((item) =>
       catalogById.has(item.catalogItemId?.toString())
     );
-    const payload = { roomName, dimensions, floorColor, gridColor, placedItems: validPlacedItems, overlapRecords };
+    const payload = { roomName, timerSeconds, dimensions, floorColor, gridColor, placedItems: validPlacedItems, overlapRecords };
     try {
       if (isNew) {
         const { data } = await api.post('/rooms', payload);
@@ -462,6 +475,13 @@ export default function RoomEditor() {
 
   function updateZoom(nextZoom) {
     setZoom(Math.max(0.6, Math.min(1.8, Number(nextZoom.toFixed(2)))));
+  }
+
+  function formatTimer(seconds) {
+    const hours = Math.floor(seconds / 3600).toString().padStart(2, '0');
+    const minutes = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+    const remainingSeconds = (seconds % 60).toString().padStart(2, '0');
+    return `${hours}:${minutes}:${remainingSeconds}`;
   }
 
   const cells = [];
@@ -493,6 +513,13 @@ export default function RoomEditor() {
         </div>
         <div className="topbar-actions">
           {(hoverError || status) && <span className={`status-text ${hoverError ? 'error' : ''}`}>{hoverError || status}</span>}
+          <span className="mono" aria-label="Workspace timer">{formatTimer(timerSeconds)}</span>
+          <button className="btn-ghost" type="button" onClick={() => setTimerRunning((running) => !running)}>
+            {timerRunning ? 'Pause' : 'Start'}
+          </button>
+          <button className="btn-ghost" type="button" onClick={() => { setTimerRunning(false); setTimerSeconds(0); }}>
+            Reset timer
+          </button>
           <button className="btn-primary" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : 'Save canvas'}
           </button>

@@ -19,6 +19,13 @@ export default function AdminDashboard() {
   const [error, setError] = useState('');
   const [expandedOverlapUser, setExpandedOverlapUser] = useState(null);
 
+  function formatTimer(seconds = 0) {
+    const hours = Math.floor(seconds / 3600).toString().padStart(2, '0');
+    const minutes = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+    const remainingSeconds = (seconds % 60).toString().padStart(2, '0');
+    return `${hours}:${minutes}:${remainingSeconds}`;
+  }
+
   useEffect(() => {
     api.post('/auth/admin/sync-firebase-users')
       .catch(() => null)
@@ -260,7 +267,7 @@ export default function AdminDashboard() {
                   {overview.recentRooms.map((room) => (
                     <Link className="admin-room-row" to={`/room/${room._id}`} key={room._id}>
                       <span><strong>{room.roomName}</strong><small>{room.userId?.username || 'Unknown user'}</small></span>
-                      <span className="room-size mono">{room.dimensions.width} × {room.dimensions.length}</span>
+                      <span className="room-size mono">{room.dimensions.width} × {room.dimensions.length}<br />{formatTimer(room.timerSeconds)}</span>
                     </Link>
                   ))}
                 </div>
