@@ -41,6 +41,39 @@ function getPredictiveAnalysis(overview) {
   };
 }
 
+function getInferentialAnalysis(overview) {
+  const counts = (overview?.monthlyRooms || []).map(({ count }) => Number(count) || 0);
+  const midpoint = Math.floor(counts.length / 2);
+  const earlier = counts.slice(0, midpoint);
+  const recent = counts.slice(midpoint);
+  const earlierAverage = earlier.length
+    ? earlier.reduce((total, count) => total + count, 0) / earlier.length
+    : 0;
+  const recentAverage = recent.length
+    ? recent.reduce((total, count) => total + count, 0) / recent.length
+    : 0;
+  const difference = recentAverage - earlierAverage;
+  const changePercent = earlierAverage ? (difference / earlierAverage) * 100 : 0;
+  const direction = difference > 0.25 ? 'Higher' : difference < -0.25 ? 'Lower' : 'Similar';
+  const evidence = counts.length >= 6 && counts.some(Boolean)
+    ? Math.abs(difference) >= 1 ? 'Directional signal' : 'No clear difference'
+    : 'Insufficient history';
+  const interpretation = evidence === 'Directional signal'
+    ? `The recent period averaged ${Math.abs(difference).toFixed(1)} more room${Math.abs(difference) === 1 ? '' : 's'} per month than the earlier period.`
+    : evidence === 'No clear difference'
+      ? 'The two periods have similar average room creation activity.'
+      : 'Add more monthly activity before drawing a reliable conclusion.';
+
+  return {
+    earlierAverage: earlierAverage.toFixed(1),
+    recentAverage: recentAverage.toFixed(1),
+    changePercent: `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(0)}%`,
+    direction,
+    evidence,
+    interpretation,
+  };
+}
+
 export default function AdminDashboard() {
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -154,6 +187,7 @@ export default function AdminDashboard() {
     return first.role === 'admin' ? -1 : 1;
   });
   const prediction = overview ? getPredictiveAnalysis(overview) : null;
+  const inference = overview ? getInferentialAnalysis(overview) : null;
 
   return (
     <div className="page admin-page">
@@ -165,6 +199,8 @@ export default function AdminDashboard() {
         <nav className="admin-sidebar-nav">
           <a href="#admin-overview"><span className="admin-nav-icon">⌂</span><span className="admin-sidebar-label">Overview</span></a>
           <a href="#admin-analytics"><span className="admin-nav-icon">◒</span><span className="admin-sidebar-label">Analytics</span></a>
+          <a href="#admin-predictions"><span className="admin-nav-icon">↗</span><span className="admin-sidebar-label">Predictions</span></a>
+          <a href="#admin-inference"><span className="admin-nav-icon">∴</span><span className="admin-sidebar-label">Inference</span></a>
           <a href="#admin-users"><span className="admin-nav-icon">◎</span><span className="admin-sidebar-label">Users</span></a>
           <a href="#admin-overlaps"><span className="admin-nav-icon">!</span><span className="admin-sidebar-label">Overlap activity</span></a>
           <a href="#admin-access"><span className="admin-nav-icon">+</span><span className="admin-sidebar-label">Add administrator</span></a>
@@ -229,7 +265,7 @@ export default function AdminDashboard() {
               </div>
             </section>
 
-            <section className="predictive-panel" aria-labelledby="predictive-heading">
+            <section className="predictive-panel" id="admin-predictions" aria-labelledby="predictive-heading">
               <div className="section-heading">
                 <div><p className="eyebrow">Predictive analysis</p><h3 id="predictive-heading">What the next month may look like</h3></div>
                 <span className="prediction-confidence">{prediction.confidence} confidence</span>
@@ -247,6 +283,26 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <p className="prediction-method">Estimate uses a linear trend across the six-month room history, blended with the recent three-month average.</p>
+            </section>
+
+            <section className="inferential-panel" id="admin-inference" aria-labelledby="inference-heading">
+              <div className="section-heading">
+                <div><p className="eyebrow">Inferential analysis</p><h3 id="inference-heading">Is activity changing?</h3></div>
+                <span className={`inference-evidence ${inference.evidence === 'Directional signal' ? 'signal' : ''}`}>{inference.evidence}</span>
+              </div>
+              <div className="inference-grid">
+                <div className="inference-result">
+                  <span className="stat-label">Recent period vs earlier period</span>
+                  <strong className={`inference-direction ${inference.direction.toLowerCase()}`}>{inference.direction}</strong>
+                  <span className="muted small">{inference.changePercent} average monthly activity</span>
+                </div>
+                <div className="inference-metrics">
+                  <div><span>Earlier three-month average</span><strong>{inference.earlierAverage}</strong><small>rooms per month</small></div>
+                  <div><span>Recent three-month average</span><strong>{inference.recentAverage}</strong><small>rooms per month</small></div>
+                  <div><span>Interpretation</span><small>{inference.interpretation}</small></div>
+                </div>
+              </div>
+              <p className="inference-method">Comparison uses the first three and latest three months. This is an observed association, not proof that one factor caused the change.</p>
             </section>
 
             <section className="admin-section overlap-activity-section" id="admin-overlaps">

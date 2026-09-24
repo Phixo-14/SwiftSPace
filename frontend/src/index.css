@@ -728,6 +728,103 @@ a {
   font-size: 11px;
 }
 
+.inferential-panel {
+  padding: 1.25rem;
+  border: 1px solid rgba(130, 214, 168, 0.35);
+  border-radius: 8px;
+  background: linear-gradient(135deg, #172b27 0%, #13221e 100%);
+}
+
+.inference-evidence {
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.inference-evidence.signal {
+  border-color: rgba(130, 214, 168, 0.6);
+  color: var(--accent-strong);
+}
+
+.inference-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.5fr);
+  gap: 2rem;
+  align-items: stretch;
+}
+
+.inference-result {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 142px;
+  padding: 1rem;
+  border-left: 3px solid var(--accent);
+  background: rgba(130, 214, 168, 0.06);
+}
+
+.inference-result strong {
+  margin: 0.35rem 0;
+  font-family: var(--font-display);
+  font-size: 38px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.inference-direction.higher {
+  color: var(--accent-strong);
+}
+
+.inference-direction.lower {
+  color: var(--gold);
+}
+
+.inference-direction.similar {
+  color: var(--text);
+}
+
+.inference-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: center;
+}
+
+.inference-metrics div {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.inference-metrics span,
+.inference-metrics small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.inference-metrics strong {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.inference-metrics small {
+  line-height: 1.4;
+}
+
+.inference-method {
+  margin: 1.1rem 0 0;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(130, 214, 168, 0.18);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .overlap-activity-section {
   margin-bottom: 0;
 }
@@ -1060,6 +1157,11 @@ a {
 
   .prediction-grid,
   .prediction-insights {
+    grid-template-columns: 1fr;
+  }
+
+  .inference-grid,
+  .inference-metrics {
     grid-template-columns: 1fr;
   }
 
