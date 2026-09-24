@@ -4,7 +4,7 @@ const Joi = require('joi');
 // `schema.validate(req.body)` directly so this stays framework-agnostic.
 
 const registerSchema = Joi.object({
-  username: Joi.string().trim().min(3).max(30).pattern(/^[A-Za-z]+(?: [A-Za-z]+)*$/).required(),
+  username: Joi.string().trim().min(3).max(30).pattern(/^[A-Za-z]+(?: [A-Za-z]+)+$/).required(),
   email: Joi.string().email({ tlds: false }).required(),
   password: Joi.string().min(8).max(72).pattern(/[^A-Za-z0-9]/).required(),
 });
@@ -25,7 +25,7 @@ const emailSchema = Joi.object({
 
 const firebaseSyncSchema = Joi.object({
   idToken: Joi.string().required(),
-  username: Joi.string().trim().min(3).max(30).pattern(/^[A-Za-z]+(?: [A-Za-z]+)*$/).required(),
+  username: Joi.string().trim().min(3).max(30).pattern(/^[A-Za-z]+(?: [A-Za-z]+)+$/).required(),
 });
 
 const adminSchema = registerSchema;

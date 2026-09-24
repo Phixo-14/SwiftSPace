@@ -41,14 +41,18 @@ export default function Login() {
           return;
         }
         const firebaseToken = await credential.user.getIdToken(true);
-          const username = (credential.user.displayName || email.split('@')[0])
+        const nameWords = (credential.user.displayName || email.split('@')[0])
             .trim()
             .replace(/[^A-Za-z ]/g, '')
             .replace(/\s+/g, ' ')
-            .slice(0, 30) || 'user';
+            .split(' ')
+            .filter(Boolean);
+        const username = nameWords.length === 2
+          ? nameWords.join(' ')
+          : `${nameWords[0] || 'User'} User`;
         const { data } = await api.post('/auth/firebase-sync', {
           idToken: firebaseToken,
-            username: username.length >= 3 ? username : `${username} user`,
+          username,
         });
         login(data.token, data.user);
         navigate('/');

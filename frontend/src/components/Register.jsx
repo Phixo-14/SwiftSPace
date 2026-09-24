@@ -16,8 +16,9 @@ export default function Register() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    if (!/^[A-Za-z]+(?: [A-Za-z]+)*$/.test(username.trim()) || username.trim().length < 3) {
-      setError('Name must be at least 3 characters and contain letters and spaces only.');
+    const fullName = username.trim().replace(/\s+/g, ' ');
+    if (!/^[A-Za-z]+(?: [A-Za-z]+)+$/.test(fullName)) {
+      setError('Please enter your first name and surname');
       return;
     }
     if (!email.includes('@')) {
@@ -32,13 +33,13 @@ export default function Register() {
     try {
       if (firebaseConfigured) {
         const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
-        await updateProfile(credential.user, { displayName: username });
+        await updateProfile(credential.user, { displayName: fullName });
         await sendEmailVerification(credential.user);
-        sessionStorage.setItem('firebase_pending_username', username);
+        sessionStorage.setItem('firebase_pending_username', fullName);
         navigate(`/verify-email?email=${encodeURIComponent(email)}`);
         return;
       }
-      const { data } = await api.post('/auth/register', { username, email, password });
+      const { data } = await api.post('/auth/register', { username: fullName, email, password });
       navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
         state: { developmentCode: data.developmentCode, message: data.message },
       });
@@ -95,14 +96,13 @@ export default function Register() {
           <p className="auth-sub">Start designing and save your room layouts in Studio Grid.</p>
           <form onSubmit={handleSubmit} noValidate>
             <label>
-              Name
+              Full Name
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. Juan Dela Cruz"
-                pattern="[A-Za-z]+(?: [A-Za-z]+)*"
-                title="Name can contain letters and spaces only."
-                minLength={3}
+                placeholder="e.g. Juan Cruz"
+                pattern="[A-Za-z]+(?: [A-Za-z]+)+"
+                title="Please enter your first name and surname"
                 maxLength={30}
                 required
               />
