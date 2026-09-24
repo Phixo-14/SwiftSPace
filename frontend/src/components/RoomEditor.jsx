@@ -587,7 +587,7 @@ export default function RoomEditor() {
           {(hoverError || status) && <span className={`status-text ${hoverError ? 'error' : ''}`}>{hoverError || status}</span>}
           <span className="mono" aria-label="Workspace timer">{formatTimer(timerSeconds)}</span>
           <span className="muted small">{timerRunning ? 'Active' : 'Paused after 1 minute idle'}</span>
-          <button className="btn-primary" onClick={handleSave} disabled={saving}>
+          <button className="btn-primary" onClick={() => handleSave()} disabled={saving}>
             {saving ? 'Saving…' : 'Save canvas'}
           </button>
         </div>
