@@ -38,6 +38,7 @@ export default function RoomEditor() {
   const [roomName, setRoomName] = useState(storedDraft?.roomName || 'Untitled Studio');
   const [timerSeconds, setTimerSeconds] = useState(storedDraft?.timerSeconds || 0);
   const [timerRunning, setTimerRunning] = useState(true);
+  const timerRunningRef = useRef(true);
   const lastActivityRef = useRef(Date.now());
   const [dimensions, setDimensions] = useState(storedDraft?.dimensions || DEFAULT_DIMENSIONS);
   const [floorColor, setFloorColor] = useState(storedDraft?.floorColor || FLOOR_OPTIONS[0].floor);
@@ -141,9 +142,13 @@ export default function RoomEditor() {
 
   useEffect(() => {
     if (loading || !draftReady) return undefined;
+    lastActivityRef.current = Date.now();
+    timerRunningRef.current = true;
+    setTimerRunning(true);
     const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'dragstart'];
     const markActivity = () => {
       lastActivityRef.current = Date.now();
+      timerRunningRef.current = true;
       setTimerRunning(true);
     };
     activityEvents.forEach((eventName) => window.addEventListener(eventName, markActivity));
@@ -151,10 +156,11 @@ export default function RoomEditor() {
     const timer = window.setInterval(() => {
       const idleFor = Date.now() - lastActivityRef.current;
       if (idleFor >= 60 * 1000) {
+        timerRunningRef.current = false;
         setTimerRunning(false);
         return;
       }
-      setTimerSeconds((seconds) => seconds + 1);
+      if (timerRunningRef.current) setTimerSeconds((seconds) => seconds + 1);
     }, 1000);
 
     return () => {
