@@ -163,6 +163,27 @@ export default function RoomEditor() {
     };
   }, [draftReady, loading]);
 
+  useEffect(() => {
+    if (!id || loading || !draftReady || timerSeconds === 0 || timerSeconds % 15 !== 0 || saving) {
+      return;
+    }
+
+    const validPlacedItems = placedItems.filter((item) =>
+      catalogById.has(item.catalogItemId?.toString())
+    );
+    api.put(`/rooms/${id}`, {
+      roomName,
+      timerSeconds,
+      dimensions,
+      floorColor,
+      gridColor,
+      placedItems: validPlacedItems,
+      overlapRecords,
+    }).catch(() => {
+      setStatus('Timer will retry saving shortly.');
+    });
+  }, [catalogById, dimensions, draftReady, floorColor, gridColor, id, loading, overlapRecords, placedItems, roomName, saving, timerSeconds]);
+
   const catalogById = useMemo(() => {
     const map = new Map();
     catalog.forEach((c) => map.set(c._id, c));

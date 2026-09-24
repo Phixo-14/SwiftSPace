@@ -267,7 +267,7 @@ export default function AdminDashboard() {
                   {overview.recentRooms.map((room) => (
                     <Link className="admin-room-row" to={`/room/${room._id}`} key={room._id}>
                       <span><strong>{room.roomName}</strong><small>{room.userId?.username || 'Unknown user'}</small></span>
-                      <span className="room-size mono">{room.dimensions.width} × {room.dimensions.length}<br />{formatTimer(room.timerSeconds)}</span>
+                      <span className="room-size mono">{room.dimensions.width} × {room.dimensions.length}<br />Time {formatTimer(room.timerSeconds)}</span>
                     </Link>
                   ))}
                 </div>
