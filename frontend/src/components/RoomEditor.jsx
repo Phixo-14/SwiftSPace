@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import api from '../api.js';
 import ItemGlyph from './ItemGlyph.jsx';
@@ -37,7 +37,8 @@ export default function RoomEditor() {
   const [catalog, setCatalog] = useState([]);
   const [roomName, setRoomName] = useState(storedDraft?.roomName || 'Untitled Studio');
   const [timerSeconds, setTimerSeconds] = useState(storedDraft?.timerSeconds || 0);
-  const [timerRunning, setTimerRunning] = useState(false);
+  const [timerRunning, setTimerRunning] = useState(true);
+  const lastActivityRef = useRef(Date.now());
   const [dimensions, setDimensions] = useState(storedDraft?.dimensions || DEFAULT_DIMENSIONS);
   const [floorColor, setFloorColor] = useState(storedDraft?.floorColor || FLOOR_OPTIONS[0].floor);
   const [gridColor, setGridColor] = useState(storedDraft?.gridColor || FLOOR_OPTIONS[0].grid);
@@ -139,12 +140,28 @@ export default function RoomEditor() {
   }, [dimensions, draftReady, draftStorageKey, floorColor, gridColor, loading, overlapRecords, placedItems, roomName, timerSeconds]);
 
   useEffect(() => {
-    if (!timerRunning) return undefined;
+    if (loading || !draftReady) return undefined;
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'dragstart'];
+    const markActivity = () => {
+      lastActivityRef.current = Date.now();
+      setTimerRunning(true);
+    };
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, markActivity));
+
     const timer = window.setInterval(() => {
+      const idleFor = Date.now() - lastActivityRef.current;
+      if (idleFor >= 60 * 1000) {
+        setTimerRunning(false);
+        return;
+      }
       setTimerSeconds((seconds) => seconds + 1);
     }, 1000);
-    return () => window.clearInterval(timer);
-  }, [timerRunning]);
+
+    return () => {
+      window.clearInterval(timer);
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, markActivity));
+    };
+  }, [draftReady, loading]);
 
   const catalogById = useMemo(() => {
     const map = new Map();
@@ -514,12 +531,7 @@ export default function RoomEditor() {
         <div className="topbar-actions">
           {(hoverError || status) && <span className={`status-text ${hoverError ? 'error' : ''}`}>{hoverError || status}</span>}
           <span className="mono" aria-label="Workspace timer">{formatTimer(timerSeconds)}</span>
-          <button className="btn-ghost" type="button" onClick={() => setTimerRunning((running) => !running)}>
-            {timerRunning ? 'Pause' : 'Start'}
-          </button>
-          <button className="btn-ghost" type="button" onClick={() => { setTimerRunning(false); setTimerSeconds(0); }}>
-            Reset timer
-          </button>
+          <span className="muted small">{timerRunning ? 'Active' : 'Paused after 1 minute idle'}</span>
           <button className="btn-primary" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : 'Save canvas'}
           </button>
