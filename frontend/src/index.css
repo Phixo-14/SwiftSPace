@@ -751,7 +751,11 @@ a {
 }
 
 .admin-section {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  max-height: 560px;
   padding: 1.25rem;
 }
 
@@ -789,6 +793,20 @@ a {
 .room-list {
   display: grid;
   gap: 0.3rem;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.user-list::-webkit-scrollbar,
+.room-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.user-list::-webkit-scrollbar-thumb,
+.room-list::-webkit-scrollbar-thumb {
+  background: rgba(130, 214, 168, 0.24);
+  border-radius: 999px;
 }
 
 .user-row,
