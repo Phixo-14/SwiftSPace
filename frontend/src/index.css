@@ -1966,6 +1966,10 @@ a {
   background: var(--workspace-color, #4b5048);
 }
 
+.print-room-title {
+  display: none;
+}
+
 .workspace-controls {
   position: absolute;
   top: 1rem;
@@ -2041,6 +2045,76 @@ a {
 
 .grid-cell.occupied {
   background: color-mix(in srgb, var(--floor-color, #bca17a) 82%, var(--grid-color, #8c7455));
+}
+
+@media print {
+  @page {
+    margin: 1.5cm;
+  }
+
+  body {
+    background: #fff;
+    color: #111;
+  }
+
+  .editor-page {
+    display: block;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .editor-page > .topbar,
+  .catalog-panel,
+  .inspector-panel,
+  .workspace-controls,
+  .placement-warning,
+  .status-text,
+  .export-room-button {
+    display: none !important;
+  }
+
+  .editor-body {
+    display: block;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .canvas-wrap {
+    display: block;
+    min-height: 0;
+    padding: 0;
+    overflow: visible;
+    background: #fff;
+  }
+
+  .print-room-title {
+    display: block;
+    margin-bottom: 1.5rem;
+    color: #111;
+  }
+
+  .print-room-title .eyebrow {
+    color: #365d4b;
+  }
+
+  .print-room-title h1 {
+    font-size: 26px;
+  }
+
+  .workspace-zoom {
+    display: inline-block;
+    transform: none !important;
+  }
+
+  .iso-grid {
+    transform: none;
+  }
+
+  .grid-cell {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
 }
 
 .grid-cell.preview-valid {

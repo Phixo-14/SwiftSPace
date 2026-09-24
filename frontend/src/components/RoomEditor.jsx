@@ -535,6 +535,10 @@ export default function RoomEditor() {
     await handleSave(() => navigate('/'));
   }
 
+  function handleExport() {
+    window.print();
+  }
+
   function handleDiscardAndExit() {
     window.localStorage.removeItem(draftStorageKey);
     navigate('/');
@@ -589,6 +593,9 @@ export default function RoomEditor() {
           <span className="muted small">{timerRunning ? 'Active' : 'Paused after 1 minute idle'}</span>
           <button className="btn-primary" onClick={() => handleSave()} disabled={saving}>
             {saving ? 'Saving…' : 'Save canvas'}
+          </button>
+          <button className="btn-ghost export-room-button" type="button" onClick={handleExport}>
+            Export design
           </button>
         </div>
       </header>
@@ -674,6 +681,10 @@ export default function RoomEditor() {
         </aside>
 
         <main className="canvas-wrap">
+          <div className="print-room-title" aria-hidden="true">
+            <p className="eyebrow">Studio Grid / Room design</p>
+            <h1>{roomName}</h1>
+          </div>
           <div className="workspace-controls" aria-label="Workspace zoom controls">
             <button type="button" onClick={() => updateZoom(zoom - 0.1)} disabled={zoom <= 0.6}>
               −
