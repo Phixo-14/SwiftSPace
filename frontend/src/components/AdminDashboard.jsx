@@ -390,7 +390,7 @@ export default function AdminDashboard() {
 
             <section className="admin-section create-admin-section" id="admin-access">
               <div className="section-heading"><div><p className="eyebrow">Access</p><h3>Add an administrator</h3></div><span className="muted small">Admin-only action</span></div>
-              <form className="admin-form" onSubmit={handleCreateAdmin}>
+              <form className="admin-form" onSubmit={handleCreateAdmin} noValidate>
                 <label>Name<input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} minLength={3} required /></label>
                 <label>Email<input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required /></label>
                 <label>Password<PasswordInput value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} minLength={8} required /></label>
@@ -401,7 +401,7 @@ export default function AdminDashboard() {
 
             <section className="admin-section create-user-section">
               <div className="section-heading"><div><p className="eyebrow">People</p><h3>Add a user</h3></div><span className="muted small">Admin-only action</span></div>
-              <form className="admin-form" onSubmit={handleCreateUser}>
+              <form className="admin-form" onSubmit={handleCreateUser} noValidate>
                 <label>Name<input value={userForm.username} onChange={(event) => setUserForm({ ...userForm, username: event.target.value })} minLength={3} required /></label>
                 <label>Email<input type="email" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} required /></label>
                 <label>Password<PasswordInput value={userForm.password} onChange={(event) => setUserForm({ ...userForm, password: event.target.value })} minLength={8} required /></label>
