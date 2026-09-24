@@ -60,6 +60,21 @@ export default function RoomEditor() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [showExitPrompt, setShowExitPrompt] = useState(false);
+  const baselineRef = useRef(null);
+
+  function getEditorSnapshot() {
+    return JSON.stringify({
+      roomName,
+      timerSeconds,
+      dimensions,
+      floorColor,
+      gridColor,
+      placedItems,
+      overlapRecords,
+    });
+  }
 
   // Load catalog once, and the existing room if we're editing one.
   useEffect(() => {
@@ -139,6 +154,26 @@ export default function RoomEditor() {
       overlapRecords,
     }));
   }, [dimensions, draftReady, draftStorageKey, floorColor, gridColor, loading, overlapRecords, placedItems, roomName, timerSeconds]);
+
+  useEffect(() => {
+    if (loading || !draftReady) return;
+    const snapshot = getEditorSnapshot();
+    if (baselineRef.current === null) {
+      baselineRef.current = snapshot;
+      return;
+    }
+    setIsDirty(snapshot !== baselineRef.current);
+  });
+
+  useEffect(() => {
+    if (!isDirty) return undefined;
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
 
   useEffect(() => {
     if (loading || !draftReady) return undefined;
@@ -465,7 +500,7 @@ export default function RoomEditor() {
     );
   }
 
-  async function handleSave() {
+  async function handleSave(afterSave) {
     setSaving(true);
     setStatus('');
     const validPlacedItems = placedItems.filter((item) =>
@@ -477,18 +512,41 @@ export default function RoomEditor() {
         const { data } = await api.post('/rooms', payload);
         window.localStorage.removeItem(draftStorageKey);
         setStatus('Saved.');
-        navigate(`/room/${data._id}`, { replace: true });
+        baselineRef.current = getEditorSnapshot();
+        setIsDirty(false);
+        if (afterSave) afterSave(data);
+        else navigate(`/room/${data._id}`, { replace: true });
       } else {
         await api.put(`/rooms/${id}`, payload);
         window.localStorage.removeItem(draftStorageKey);
         setStatus('Saved.');
+        baselineRef.current = getEditorSnapshot();
+        setIsDirty(false);
+        if (afterSave) afterSave();
       }
+      return true;
     } catch (err) {
       const details = err.response?.data?.details;
       setStatus(details ? details.join(' ') : err.response?.data?.message || 'Could not save room.');
+      return false;
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleBackClick(event) {
+    if (!isDirty) return;
+    event.preventDefault();
+    setShowExitPrompt(true);
+  }
+
+  async function handleSaveAndExit() {
+    await handleSave(() => navigate('/'));
+  }
+
+  function handleDiscardAndExit() {
+    window.localStorage.removeItem(draftStorageKey);
+    navigate('/');
   }
 
   function updateDimension(axis, value) {
@@ -526,7 +584,7 @@ export default function RoomEditor() {
     <div className="page editor-page">
       <header className="topbar">
         <div className="editor-title-block">
-          <Link to="/" className="back-link">← Dashboard</Link>
+          <Link to="/" className="back-link" onClick={handleBackClick}>← Dashboard</Link>
           <input
             className="room-name-input"
             value={roomName}
@@ -884,6 +942,26 @@ export default function RoomEditor() {
           )}
         </aside>
       </div>
+      {showExitPrompt && (
+        <div className="exit-prompt-backdrop" role="presentation">
+          <section className="exit-prompt" role="dialog" aria-modal="true" aria-labelledby="exit-prompt-title">
+            <p className="eyebrow">Unsaved changes</p>
+            <h2 id="exit-prompt-title">Save this room before leaving?</h2>
+            <p className="muted">Your furniture, timer, and room settings have not been saved yet.</p>
+            <div className="exit-prompt-actions">
+              <button className="btn-primary" type="button" onClick={handleSaveAndExit} disabled={saving}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+              <button className="btn-ghost danger" type="button" onClick={handleDiscardAndExit} disabled={saving}>
+                Don’t save
+              </button>
+              <button className="btn-ghost" type="button" onClick={() => setShowExitPrompt(false)} disabled={saving}>
+                Cancel
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

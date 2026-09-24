@@ -99,6 +99,37 @@ button {
   cursor: pointer;
 }
 
+.exit-prompt-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(4, 10, 8, 0.72);
+}
+
+.exit-prompt {
+  width: min(100%, 30rem);
+  padding: 1.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--panel-raised);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+}
+
+.exit-prompt h2 {
+  margin-bottom: 0.5rem;
+  font-size: 1.35rem;
+}
+
+.exit-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
+}
+
 input {
   font-family: inherit;
   color: var(--text);
