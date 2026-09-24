@@ -20,31 +20,27 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    let firebaseError;
     try {
       if (firebaseConfigured) {
-        try {
-          const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
-          await reload(credential.user);
-          if (!credential.user.emailVerified) {
-            setError('Please verify your email before signing in.');
-            return;
-          }
-          const firebaseToken = await credential.user.getIdToken(true);
-          const { data } = await api.post('/auth/firebase-sync', {
-            idToken: firebaseToken,
-            username: credential.user.displayName || email.split('@')[0],
-          });
-          login(data.token, data.user);
-          navigate('/');
+        const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+        await reload(credential.user);
+        if (!credential.user.emailVerified) {
+          setError('Please verify your email before signing in.');
           return;
-        } catch (requestError) {
-          firebaseError = requestError;
-          const firebaseCredentialError = typeof requestError.code === 'string'
-            && requestError.code.startsWith('auth/');
-          if (!firebaseCredentialError) throw requestError;
-          if (requestError.code === 'auth/user-disabled') throw requestError;
         }
+        const firebaseToken = await credential.user.getIdToken(true);
+          const username = (credential.user.displayName || email.split('@')[0])
+            .trim()
+            .replace(/[^A-Za-z ]/g, '')
+            .replace(/\s+/g, ' ')
+            .slice(0, 30) || 'user';
+        const { data } = await api.post('/auth/firebase-sync', {
+          idToken: firebaseToken,
+            username: username.length >= 3 ? username : `${username} user`,
+        });
+        login(data.token, data.user);
+        navigate('/');
+        return;
       }
       const { data } = await api.post('/auth/login', { email, password });
       login(data.token, data.user);
@@ -52,9 +48,12 @@ export default function Login() {
     } catch (err) {
       const firebaseMessages = {
         'auth/invalid-credential': 'Incorrect Firebase email or password.',
+        'auth/invalid-login-credentials': 'Incorrect Firebase email or password.',
         'auth/user-not-found': 'No Firebase account exists for this email.',
         'auth/wrong-password': 'Incorrect Firebase email or password.',
         'auth/user-disabled': 'This Firebase account has been disabled.',
+        'auth/too-many-requests': 'Too many sign-in attempts. Try again later.',
+        'auth/network-request-failed': 'Could not reach Firebase. Check your connection and try again.',
       };
       const retrySeconds = Number(err.response?.headers?.['retry-after']);
       if (err.response?.status === 429) {
@@ -63,7 +62,8 @@ export default function Login() {
       const errorMessage = err.code === 'ECONNABORTED'
         ? 'The server took too long to respond. Please try again.'
         : err.response?.data?.message
-          || firebaseMessages[firebaseError?.code]
+          || firebaseMessages[err.code]
+            || err.message
           || 'Could not sign in.';
       setError(errorMessage);
     } finally {
