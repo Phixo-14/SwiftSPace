@@ -46,6 +46,27 @@ export default function RoomEditor() {
   // Load catalog once, and the existing room if we're editing one.
   useEffect(() => {
     let cancelled = false;
+
+    function restoreDraft() {
+      const savedDraft = window.localStorage.getItem(draftStorageKey);
+      if (!savedDraft) return;
+
+      try {
+        const draft = JSON.parse(savedDraft);
+        setRoomName(draft.roomName || 'Untitled Studio');
+        setDimensions(draft.dimensions || DEFAULT_DIMENSIONS);
+        setFloorColor(draft.floorColor || FLOOR_OPTIONS[0].floor);
+        setGridColor(draft.gridColor || FLOOR_OPTIONS[0].grid);
+        const draftFloor = FLOOR_OPTIONS.find((option) => option.floor === draft.floorColor);
+        setWorkspaceColor(draftFloor?.workspace || FLOOR_OPTIONS[0].workspace);
+        setPlacedItems(draft.placedItems || []);
+        setOverlapRecords(draft.overlapRecords || []);
+        setStatus('Restored unsaved draft.');
+      } catch {
+        window.localStorage.removeItem(draftStorageKey);
+      }
+    }
+
     async function load() {
       try {
         const catalogRes = await api.get('/catalog/items');
@@ -69,20 +90,9 @@ export default function RoomEditor() {
           setOverlapRecords(roomRes.data.overlapRecords || []);
         }
 
-        const savedDraft = window.localStorage.getItem(draftStorageKey);
-        if (savedDraft) {
-          const draft = JSON.parse(savedDraft);
-          setRoomName(draft.roomName || 'Untitled Studio');
-          setDimensions(draft.dimensions || DEFAULT_DIMENSIONS);
-          setFloorColor(draft.floorColor || FLOOR_OPTIONS[0].floor);
-          setGridColor(draft.gridColor || FLOOR_OPTIONS[0].grid);
-          const draftFloor = FLOOR_OPTIONS.find((option) => option.floor === draft.floorColor);
-          setWorkspaceColor(draftFloor?.workspace || FLOOR_OPTIONS[0].workspace);
-          setPlacedItems(draft.placedItems || []);
-          setOverlapRecords(draft.overlapRecords || []);
-          setStatus('Restored unsaved draft.');
-        }
+        restoreDraft();
       } catch (err) {
+        restoreDraft();
         if (!cancelled) setStatus('Could not load room data.');
       } finally {
         if (!cancelled) {
