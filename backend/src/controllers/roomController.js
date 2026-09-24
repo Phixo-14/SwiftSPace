@@ -15,6 +15,14 @@ async function getRoomExtras(roomId) {
 }
 
 async function saveRoomExtras(roomId, userId, timerSeconds, overlapRecords) {
+  await Promise.all([
+    RoomTimer.createCollection().catch((error) => {
+      if (error.code !== 48) throw error;
+    }),
+    PlacementError.createCollection().catch((error) => {
+      if (error.code !== 48) throw error;
+    }),
+  ]);
   await RoomTimer.findOneAndUpdate(
     { roomId },
     { $set: { userId, seconds: timerSeconds || 0 } },
