@@ -46,7 +46,7 @@ export default function Register() {
     } catch (err) {
       const details = err.response?.data?.details;
       const firebaseMessages = {
-        'auth/email-already-in-use': 'This email already has a Firebase account. Sign in or use another email.',
+        'auth/email-already-in-use': 'This email already has an account. Sign in or use another email.',
         'auth/invalid-api-key': 'Firebase API key is invalid. Check the Firebase web app configuration.',
         'auth/operation-not-allowed': 'Enable Email/Password sign-in in Firebase Authentication settings.',
         'auth/weak-password': 'Firebase rejected this password. Use at least 8 characters.',
