@@ -166,16 +166,6 @@ export default function RoomEditor() {
   });
 
   useEffect(() => {
-    if (!isDirty) return undefined;
-    const handleBeforeUnload = (event) => {
-      event.preventDefault();
-      event.returnValue = '';
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isDirty]);
-
-  useEffect(() => {
     if (loading || !draftReady) return undefined;
     lastActivityRef.current = Date.now();
     timerRunningRef.current = true;
