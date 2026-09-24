@@ -40,6 +40,8 @@ export default function RoomEditor() {
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const draftStorageKey = `studio-grid-draft:${id || 'new'}`;
 
   // Load catalog once, and the existing room if we're editing one.
   useEffect(() => {
@@ -66,17 +68,46 @@ export default function RoomEditor() {
           setPlacedItems(validPlacedItems);
           setOverlapRecords(roomRes.data.overlapRecords || []);
         }
+
+        const savedDraft = window.localStorage.getItem(draftStorageKey);
+        if (savedDraft) {
+          const draft = JSON.parse(savedDraft);
+          setRoomName(draft.roomName || 'Untitled Studio');
+          setDimensions(draft.dimensions || DEFAULT_DIMENSIONS);
+          setFloorColor(draft.floorColor || FLOOR_OPTIONS[0].floor);
+          setGridColor(draft.gridColor || FLOOR_OPTIONS[0].grid);
+          const draftFloor = FLOOR_OPTIONS.find((option) => option.floor === draft.floorColor);
+          setWorkspaceColor(draftFloor?.workspace || FLOOR_OPTIONS[0].workspace);
+          setPlacedItems(draft.placedItems || []);
+          setOverlapRecords(draft.overlapRecords || []);
+          setStatus('Restored unsaved draft.');
+        }
       } catch (err) {
         if (!cancelled) setStatus('Could not load room data.');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setDraftReady(true);
+        }
       }
     }
     load();
     return () => {
       cancelled = true;
     };
-  }, [id, isNew]);
+  }, [draftStorageKey, id, isNew]);
+
+  useEffect(() => {
+    if (loading || !draftReady) return;
+    window.localStorage.setItem(draftStorageKey, JSON.stringify({
+      roomName,
+      dimensions,
+      floorColor,
+      gridColor,
+      placedItems,
+      overlapRecords,
+    }));
+  }, [dimensions, draftReady, draftStorageKey, floorColor, gridColor, loading, overlapRecords, placedItems, roomName]);
 
   const catalogById = useMemo(() => {
     const map = new Map();
@@ -384,10 +415,12 @@ export default function RoomEditor() {
     try {
       if (isNew) {
         const { data } = await api.post('/rooms', payload);
+        window.localStorage.removeItem(draftStorageKey);
         setStatus('Saved.');
         navigate(`/room/${data._id}`, { replace: true });
       } else {
         await api.put(`/rooms/${id}`, payload);
+        window.localStorage.removeItem(draftStorageKey);
         setStatus('Saved.');
       }
     } catch (err) {
