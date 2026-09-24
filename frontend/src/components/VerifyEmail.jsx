@@ -107,7 +107,6 @@ export default function VerifyEmail() {
           : firebaseMode
             ? <Link className="btn-link verification-signin" to="/login">Back to sign in</Link>
             : <button type="button" className="btn-link" onClick={resendCode}>Resend code</button>}
-        <p className="auth-switch"><Link to="/login">Back to sign in</Link></p>
       </div>
     </div>
   );

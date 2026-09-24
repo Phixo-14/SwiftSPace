@@ -25,7 +25,7 @@ const emailSchema = Joi.object({
 
 const firebaseSyncSchema = Joi.object({
   idToken: Joi.string().required(),
-  username: Joi.string().alphanum().min(3).max(30).required(),
+  username: Joi.string().trim().min(3).max(30).pattern(/^[A-Za-z]+(?: [A-Za-z]+)*$/).required(),
 });
 
 const adminSchema = registerSchema;
