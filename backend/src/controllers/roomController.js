@@ -5,8 +5,8 @@ const PlacementError = require('../models/PlacementError');
 
 async function getRoomExtras(roomId) {
   const [timer, placementErrors] = await Promise.all([
-    RoomTimer.findOne({ roomId }).select('seconds'),
-    PlacementError.find({ roomId }).sort({ occurredAt: 1 }),
+    RoomTimer.findOne({ roomId }).select('seconds').lean(),
+    PlacementError.find({ roomId }).sort({ occurredAt: 1 }).lean(),
   ]);
   return {
     timerSeconds: timer?.seconds || 0,
@@ -17,16 +17,20 @@ async function getRoomExtras(roomId) {
 async function saveRoomExtras(roomId, userId, timerSeconds, overlapRecords) {
   await RoomTimer.findOneAndUpdate(
     { roomId },
-    { roomId, userId, seconds: timerSeconds },
+    { $set: { userId, seconds: timerSeconds || 0 } },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
   await PlacementError.deleteMany({ roomId });
   if (overlapRecords.length) {
     await PlacementError.insertMany(overlapRecords.map((record) => ({
-      ...record,
+      catalogItemId: record.catalogItemId,
+      gridX: record.gridX,
+      gridY: record.gridY,
+      rotation: record.rotation || 0,
+      reason: record.reason,
+      occurredAt: record.occurredAt,
       roomId,
       userId,
-      _id: undefined,
     })));
   }
 }
