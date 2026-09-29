@@ -579,6 +579,39 @@ a {
   padding-left: 5rem;
 }
 
+.account-page-main {
+  width: min(900px, 100%);
+  margin: 0 auto;
+  padding: 2.5rem 2rem 4rem 5rem;
+}
+
+.account-page-settings {
+  display: grid;
+  justify-items: start;
+  gap: 1.25rem;
+  padding: 1rem 0 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.account-page-settings h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.account-page-details {
+  display: grid;
+  justify-items: start;
+  gap: 0.45rem;
+}
+
+.account-page-details p {
+  margin: 0;
+}
+
+.account-page-details .btn-danger {
+  margin-top: 0.5rem;
+}
+
 .admin-brand {
   display: flex;
   align-items: center;
@@ -1630,50 +1663,6 @@ a {
   margin-bottom: 0.55rem;
 }
 
-.account-settings {
-  grid-column: 1 / -1;
-  display: grid;
-  justify-items: start;
-  gap: 0.9rem;
-  width: 100%;
-  padding: 1rem 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.account-settings-heading {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.account-settings h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.account-settings .eyebrow,
-.account-settings-panel p:last-child {
-  margin-bottom: 0;
-}
-
-.account-settings-panel {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-  padding: 0.25rem 0 0.25rem 0.2rem;
-}
-
-.account-settings-panel strong {
-  display: block;
-  margin-bottom: 0.25rem;
-}
-
-.account-settings-panel .muted {
-  margin-bottom: 0.3rem;
-}
-
 .dashboard-subtitle {
   max-width: 260px;
   margin: 0 0 0.3rem;
@@ -2661,6 +2650,10 @@ a {
 
   .dashboard-page .dashboard-main {
     padding: 1.5rem 1rem;
+  }
+
+  .account-page-main {
+    padding: 1.75rem 1rem 3rem;
   }
 
   .admin-main {

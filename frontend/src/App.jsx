@@ -7,6 +7,7 @@ import RoomEditor from './components/RoomEditor.jsx';
 import AdminDashboard from './components/AdminDashboard.jsx';
 import VerifyEmail from './components/VerifyEmail.jsx';
 import SharedRoom from './components/SharedRoom.jsx';
+import AccountSettings from './components/AccountSettings.jsx';
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth();
@@ -34,6 +35,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/account"
+        element={
+          <ProtectedRoute>
+            <AccountSettings />
           </ProtectedRoute>
         }
       />

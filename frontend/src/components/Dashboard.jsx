@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { signOut } from 'firebase/auth';
 import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
-import { firebaseAuth } from '../firebase.js';
 
 export default function Dashboard() {
   const [rooms, setRooms] = useState([]);
@@ -11,10 +9,6 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [deletingRoomId, setDeletingRoomId] = useState(null);
   const [roomPendingDeletion, setRoomPendingDeletion] = useState(null);
-  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
-  const [accountDeletePending, setAccountDeletePending] = useState(false);
-  const [deletingAccount, setDeletingAccount] = useState(false);
-  const [accountDeleteError, setAccountDeleteError] = useState('');
   const [shareTarget, setShareTarget] = useState(null);
   const [shareUrl, setShareUrl] = useState('');
   const [shareError, setShareError] = useState('');
@@ -68,21 +62,6 @@ export default function Dashboard() {
     }
   }
 
-  async function confirmDeleteAccount() {
-    setDeletingAccount(true);
-    setAccountDeleteError('');
-    try {
-      await api.delete('/auth/account');
-      if (firebaseAuth) await signOut(firebaseAuth).catch(() => {});
-      logout();
-      navigate('/login', { replace: true });
-    } catch (requestError) {
-      setAccountDeleteError(requestError.response?.data?.message || 'Could not delete your account.');
-    } finally {
-      setDeletingAccount(false);
-    }
-  }
-
   async function openShare(room) {
     setShareTarget(room);
     setShareUrl('');
@@ -126,13 +105,6 @@ export default function Dashboard() {
     }
   }
 
-  function openAccountSettings() {
-    setAccountSettingsOpen(true);
-    window.requestAnimationFrame(() => {
-      document.getElementById('account-settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }
-
   return (
     <div className="page dashboard-page">
       <aside className="admin-hover-sidebar" aria-label="Workspace navigation">
@@ -143,7 +115,7 @@ export default function Dashboard() {
         <nav className="admin-sidebar-nav">
           <a href="#dashboard-overview"><span className="admin-nav-icon">⌂</span><span className="admin-sidebar-label">My layouts</span></a>
           <Link to="/room/new"><span className="admin-nav-icon">+</span><span className="admin-sidebar-label">New room</span></Link>
-          {!isAdmin && <button type="button" aria-expanded={accountSettingsOpen} onClick={openAccountSettings}><span className="admin-nav-icon">◎</span><span className="admin-sidebar-label">Manage account</span></button>}
+          {!isAdmin && <Link to="/account"><span className="admin-nav-icon">◎</span><span className="admin-sidebar-label">Manage account</span></Link>}
         </nav>
       </aside>
       <header className="topbar">
@@ -167,42 +139,6 @@ export default function Dashboard() {
           </div>
           <p className="dashboard-subtitle">Saved rooms and new ideas, all in one place.</p>
         </div>
-        {!isAdmin && accountSettingsOpen && (
-          <section className="account-settings" id="account-settings" aria-labelledby="account-settings-heading">
-            <div className="account-settings-heading">
-              <div>
-                <p className="eyebrow">Account</p>
-                <h2 id="account-settings-heading">Account settings</h2>
-              </div>
-              <button
-                className="btn-ghost"
-                type="button"
-                aria-expanded={accountSettingsOpen}
-                aria-controls="account-settings-panel"
-                onClick={() => setAccountSettingsOpen((open) => !open)}
-              >
-                {accountSettingsOpen ? 'Close account settings' : 'Manage account'}
-              </button>
-            </div>
-            <div className="account-settings-panel" id="account-settings-panel">
-                <div>
-                  <strong>{user?.username}</strong>
-                  <p className="muted">{user?.email}</p>
-                  <p className="muted small">Permanently remove your account and all saved layouts.</p>
-                </div>
-                <button
-                  className="btn-danger"
-                  type="button"
-                  onClick={() => {
-                    setAccountDeleteError('');
-                    setAccountDeletePending(true);
-                  }}
-                >
-                  Delete account
-                </button>
-            </div>
-          </section>
-        )}
         <Link to="/room/new" className="new-room-card">
           <span className="new-room-icon">+</span>
           <span className="new-room-title">New room</span>
@@ -266,26 +202,6 @@ export default function Dashboard() {
               </button>
               <button className="btn-danger" type="button" onClick={confirmDelete} disabled={deletingRoomId !== null}>
                 {deletingRoomId ? 'Deleting…' : 'Delete room'}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
-
-      {accountDeletePending && (
-        <div className="delete-dialog-backdrop" role="presentation">
-          <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="account-delete-title">
-            <div className="delete-dialog-icon" aria-hidden="true">×</div>
-            <p className="eyebrow">Account settings</p>
-            <h2 id="account-delete-title">Delete your account?</h2>
-            <p className="muted">Your account and all saved rooms will be permanently deleted. This cannot be undone.</p>
-            {accountDeleteError && <p className="form-error" role="alert">{accountDeleteError}</p>}
-            <div className="delete-dialog-actions">
-              <button className="btn-ghost" type="button" onClick={() => setAccountDeletePending(false)} disabled={deletingAccount}>
-                Keep account
-              </button>
-              <button className="btn-danger" type="button" onClick={confirmDeleteAccount} disabled={deletingAccount}>
-                {deletingAccount ? 'Deleting…' : 'Delete account'}
               </button>
             </div>
           </section>
