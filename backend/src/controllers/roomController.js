@@ -254,6 +254,22 @@ async function getRoomVersions(req, res) {
   res.json(versions);
 }
 
+async function getRoomVersion(req, res) {
+  const room = await Room.findById(req.params.id);
+  if (!room) return res.status(404).json({ message: 'Project not found.' });
+  if (room.userId.toString() !== req.user.id) {
+    return res.status(403).json({ message: 'You do not have access to this project.' });
+  }
+
+  const version = await RoomVersion.findOne({
+    _id: req.params.versionId,
+    roomId: room._id,
+    userId: req.user.id,
+  }).select('_id name createdAt snapshot').lean();
+  if (!version) return res.status(404).json({ message: 'Project version not found.' });
+  res.json(version);
+}
+
 async function createRoomVersion(req, res) {
   const room = await Room.findById(req.params.id);
   if (!room) return res.status(404).json({ message: 'Project not found.' });
@@ -364,6 +380,7 @@ module.exports = {
   deleteRoom,
   duplicateRoom,
   getRoomVersions,
+  getRoomVersion,
   createRoomVersion,
   restoreRoomVersion,
   createShareLink,

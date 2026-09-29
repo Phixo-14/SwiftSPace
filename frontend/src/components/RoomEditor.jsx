@@ -77,6 +77,8 @@ export default function RoomEditor() {
   const [showExitPrompt, setShowExitPrompt] = useState(false);
   const [versions, setVersions] = useState([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versionPreview, setVersionPreview] = useState(null);
+  const [versionPreviewLoadingId, setVersionPreviewLoadingId] = useState(null);
   const [versionName, setVersionName] = useState('');
   const [versionSaving, setVersionSaving] = useState(false);
   const [versionError, setVersionError] = useState('');
@@ -630,6 +632,19 @@ export default function RoomEditor() {
     }
   }
 
+  async function previewVersion(version) {
+    setVersionPreviewLoadingId(version._id);
+    setVersionError('');
+    try {
+      const { data } = await api.get(`/rooms/${id}/versions/${version._id}`);
+      setVersionPreview(data);
+    } catch (requestError) {
+      setVersionError(requestError.response?.data?.message || 'Could not load this version preview.');
+    } finally {
+      setVersionPreviewLoadingId(null);
+    }
+  }
+
   async function restoreVersion(version) {
     if (isDirty && !window.confirm('Discard unsaved changes and restore this version?')) return;
     if (!isDirty && !window.confirm(`Restore ${version.name}?`)) return;
@@ -972,7 +987,12 @@ export default function RoomEditor() {
                   {versions.map((version) => (
                     <div className="designer-version-row" key={version._id}>
                       <span><strong>{version.name}</strong><small>{new Date(version.createdAt).toLocaleString()}</small></span>
-                      <button className="btn-ghost" type="button" onClick={() => restoreVersion(version)} disabled={versionSaving}>Restore</button>
+                      <div className="designer-version-actions">
+                        <button className="btn-ghost" type="button" onClick={() => previewVersion(version)} disabled={versionSaving || versionPreviewLoadingId === version._id}>
+                          {versionPreviewLoadingId === version._id ? 'Loading…' : 'Preview'}
+                        </button>
+                        <button className="btn-ghost" type="button" onClick={() => restoreVersion(version)} disabled={versionSaving}>Restore</button>
+                      </div>
                     </div>
                   ))}
                   {!versionsLoading && versions.length === 0 && <p className="muted small">No versions saved yet.</p>}
@@ -1130,6 +1150,77 @@ export default function RoomEditor() {
           )}
         </aside>
       </div>
+      {versionPreview && (
+        <div className="version-preview-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setVersionPreview(null);
+        }}>
+          <section className="version-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="version-preview-title">
+            <header className="version-preview-header">
+              <div>
+                <p className="eyebrow">Saved room version</p>
+                <h2 id="version-preview-title">{versionPreview.name}</h2>
+                <p className="muted small">Saved {new Date(versionPreview.createdAt).toLocaleString()}</p>
+              </div>
+              <button className="delete-room-btn" type="button" aria-label="Close version preview" onClick={() => setVersionPreview(null)}>×</button>
+            </header>
+            <div className="version-preview-meta">
+              <span>{versionPreview.snapshot.dimensions.width} × {versionPreview.snapshot.dimensions.length} grid</span>
+              <span>{versionPreview.snapshot.placedItems.length} furniture item(s)</span>
+              {versionPreview.snapshot.clientName && <span>Client: {versionPreview.snapshot.clientName}</span>}
+            </div>
+            <div className="version-preview-stage">
+              <div
+                className="version-preview-grid"
+                style={{
+                  gridTemplateColumns: `repeat(${versionPreview.snapshot.dimensions.width}, 24px)`,
+                  gridTemplateRows: `repeat(${versionPreview.snapshot.dimensions.length}, 24px)`,
+                  '--version-floor': versionPreview.snapshot.floorColor,
+                  '--version-grid': versionPreview.snapshot.gridColor,
+                }}
+                aria-label={`Saved ${versionPreview.name} room layout`}
+              >
+                {Array.from({ length: versionPreview.snapshot.dimensions.width * versionPreview.snapshot.dimensions.length }, (_, index) => (
+                  <span
+                    className="version-preview-cell"
+                    key={`cell-${index}`}
+                    style={{ gridColumn: (index % versionPreview.snapshot.dimensions.width) + 1, gridRow: Math.floor(index / versionPreview.snapshot.dimensions.width) + 1 }}
+                  />
+                ))}
+                {versionPreview.snapshot.placedItems.map((item, index) => {
+                  const catalogItem = catalogById.get(item.catalogItemId?.toString());
+                  if (!catalogItem) return null;
+                  const radians = (item.rotation * Math.PI) / 180;
+                  const cosine = Math.abs(Math.cos(radians));
+                  const sine = Math.abs(Math.sin(radians));
+                  const width = Math.max(1, Math.ceil(catalogItem.footprint.length * cosine + catalogItem.footprint.width * sine - 1e-9));
+                  const length = Math.max(1, Math.ceil(catalogItem.footprint.length * sine + catalogItem.footprint.width * cosine - 1e-9));
+                  return (
+                    <div
+                      className="version-preview-item"
+                      key={item.placementId || index}
+                      title={`${catalogItem.name} · ${item.rotation}°`}
+                      style={{
+                        gridColumn: `${item.gridX + 1} / span ${width}`,
+                        gridRow: `${item.gridY + 1} / span ${length}`,
+                        '--item-color': item.customColor || catalogItem.defaultColor,
+                      }}
+                    >
+                      <ItemGlyph iconKey={catalogItem.iconKey} color={item.customColor || catalogItem.defaultColor} rotation={item.rotation} isometric />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {versionPreview.snapshot.designNotes && (
+              <p className="version-preview-notes">{versionPreview.snapshot.designNotes}</p>
+            )}
+            <footer className="version-preview-footer">
+              <button className="btn-ghost" type="button" onClick={() => setVersionPreview(null)}>Close preview</button>
+              <button className="btn-primary" type="button" onClick={() => restoreVersion(versionPreview)} disabled={versionSaving}>Restore this version</button>
+            </footer>
+          </section>
+        </div>
+      )}
       {showExitPrompt && (
         <div className="exit-prompt-backdrop" role="presentation">
           <section className="exit-prompt" role="dialog" aria-modal="true" aria-labelledby="exit-prompt-title">
