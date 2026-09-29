@@ -376,7 +376,7 @@ export default function AdminDashboard() {
               </section>
 
               <section className="admin-section">
-                <div className="section-heading"><div><p className="eyebrow">Activity</p><h3>Recent layouts</h3></div><span className="section-count">{overview.stats.rooms}</span></div>
+                <div className="section-heading"><div><p className="eyebrow">Activity</p><h3>All saved layouts</h3></div><span className="section-count">{overview.stats.rooms}</span></div>
                 <div className="room-list">
                   {overview.recentRooms.length === 0 && <p className="muted">No layouts have been saved yet.</p>}
                   {overview.recentRooms.map((room) => (
