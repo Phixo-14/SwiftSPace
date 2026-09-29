@@ -11,6 +11,7 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [deletingRoomId, setDeletingRoomId] = useState(null);
   const [roomPendingDeletion, setRoomPendingDeletion] = useState(null);
+  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [accountDeletePending, setAccountDeletePending] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [accountDeleteError, setAccountDeleteError] = useState('');
@@ -148,6 +149,44 @@ export default function Dashboard() {
           </div>
           <p className="dashboard-subtitle">Saved rooms and new ideas, all in one place.</p>
         </div>
+        {!isAdmin && (
+          <section className="account-settings" aria-labelledby="account-settings-heading">
+            <div className="account-settings-heading">
+              <div>
+                <p className="eyebrow">Account</p>
+                <h2 id="account-settings-heading">Account settings</h2>
+              </div>
+              <button
+                className="btn-ghost"
+                type="button"
+                aria-expanded={accountSettingsOpen}
+                aria-controls="account-settings-panel"
+                onClick={() => setAccountSettingsOpen((open) => !open)}
+              >
+                {accountSettingsOpen ? 'Close account settings' : 'Manage account'}
+              </button>
+            </div>
+            {accountSettingsOpen && (
+              <div className="account-settings-panel" id="account-settings-panel">
+                <div>
+                  <strong>{user?.username}</strong>
+                  <p className="muted">{user?.email}</p>
+                  <p className="muted small">Permanently remove your account and all saved layouts.</p>
+                </div>
+                <button
+                  className="btn-danger"
+                  type="button"
+                  onClick={() => {
+                    setAccountDeleteError('');
+                    setAccountDeletePending(true);
+                  }}
+                >
+                  Delete account
+                </button>
+              </div>
+            )}
+          </section>
+        )}
         <Link to="/room/new" className="new-room-card">
           <span className="new-room-icon">+</span>
           <span className="new-room-title">New room</span>
@@ -196,25 +235,6 @@ export default function Dashboard() {
           </article>
         ))}
 
-        {!isAdmin && (
-          <section className="account-settings" aria-labelledby="account-settings-heading">
-            <div>
-              <p className="eyebrow">Account</p>
-              <h2 id="account-settings-heading">Account settings</h2>
-              <p className="muted">Permanently remove your account and all saved layouts.</p>
-            </div>
-            <button
-              className="btn-danger"
-              type="button"
-              onClick={() => {
-                setAccountDeleteError('');
-                setAccountDeletePending(true);
-              }}
-            >
-              Delete account
-            </button>
-          </section>
-        )}
       </main>
 
       {roomPendingDeletion && (

@@ -1601,22 +1601,46 @@ a {
 
 .account-settings {
   grid-column: 1 / -1;
+  display: grid;
+  justify-items: start;
+  gap: 0.9rem;
+  width: 100%;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.account-settings-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1.25rem;
-  margin-top: 1rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
 .account-settings h2 {
-  margin-bottom: 0.3rem;
+  margin: 0;
   font-size: 1.1rem;
 }
 
-.account-settings p:last-child {
+.account-settings .eyebrow,
+.account-settings-panel p:last-child {
   margin-bottom: 0;
+}
+
+.account-settings-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.25rem 0 0.25rem 0.2rem;
+}
+
+.account-settings-panel strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.account-settings-panel .muted {
+  margin-bottom: 0.3rem;
 }
 
 .dashboard-subtitle {
