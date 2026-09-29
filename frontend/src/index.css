@@ -2420,6 +2420,14 @@ a {
   text-align: center;
 }
 
+.workspace-controls .workspace-control-separator {
+  min-width: 0;
+  width: 1px;
+  height: 20px;
+  margin: 0 0.2rem;
+  background: var(--border-strong);
+}
+
 .workspace-zoom {
   flex: 0 0 auto;
   transition: transform 140ms ease;

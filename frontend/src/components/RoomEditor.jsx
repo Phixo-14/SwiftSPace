@@ -69,6 +69,7 @@ export default function RoomEditor() {
   const [hoverCell, setHoverCell] = useState(null);
   const [draggedItem, setDraggedItem] = useState(null);
   const [zoom, setZoom] = useState(1);
+  const [platformRotation, setPlatformRotation] = useState(0);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -829,9 +830,20 @@ export default function RoomEditor() {
               +
             </button>
             <span>{Math.round(zoom * 100)}%</span>
+            <span className="workspace-control-separator" aria-hidden="true" />
+            <button type="button" onClick={() => setPlatformRotation((current) => (current + 270) % 360)} title="Rotate platform counterclockwise" aria-label="Rotate platform counterclockwise">
+              ↶
+            </button>
+            <button type="button" onClick={() => setPlatformRotation((current) => (current + 90) % 360)} title="Rotate platform clockwise" aria-label="Rotate platform clockwise">
+              ↷
+            </button>
+            <button type="button" onClick={() => setPlatformRotation(0)} disabled={platformRotation === 0} title="Reset platform orientation" aria-label="Reset platform orientation">
+              0°
+            </button>
+            <span aria-live="polite">{platformRotation}°</span>
           </div>
           {hoverError && <div className="placement-warning">{hoverError}</div>}
-          <div className="workspace-zoom" style={{ transform: `scale(${zoom})` }}>
+          <div className="workspace-zoom" style={{ transform: `scale(${zoom}) rotate(${platformRotation}deg)` }}>
             <div
               className="iso-grid"
               style={{
