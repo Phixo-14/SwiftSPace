@@ -126,6 +126,13 @@ export default function Dashboard() {
     }
   }
 
+  function openAccountSettings() {
+    setAccountSettingsOpen(true);
+    window.requestAnimationFrame(() => {
+      document.getElementById('account-settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
   return (
     <div className="page dashboard-page">
       <aside className="admin-hover-sidebar" aria-label="Workspace navigation">
@@ -136,7 +143,7 @@ export default function Dashboard() {
         <nav className="admin-sidebar-nav">
           <a href="#dashboard-overview"><span className="admin-nav-icon">⌂</span><span className="admin-sidebar-label">My layouts</span></a>
           <Link to="/room/new"><span className="admin-nav-icon">+</span><span className="admin-sidebar-label">New room</span></Link>
-          {!isAdmin && <a href="#account-settings" onClick={() => setAccountSettingsOpen(true)}><span className="admin-nav-icon">◎</span><span className="admin-sidebar-label">Manage account</span></a>}
+          {!isAdmin && <button type="button" aria-expanded={accountSettingsOpen} onClick={openAccountSettings}><span className="admin-nav-icon">◎</span><span className="admin-sidebar-label">Manage account</span></button>}
         </nav>
       </aside>
       <header className="topbar">
@@ -160,7 +167,7 @@ export default function Dashboard() {
           </div>
           <p className="dashboard-subtitle">Saved rooms and new ideas, all in one place.</p>
         </div>
-        {!isAdmin && (
+        {!isAdmin && accountSettingsOpen && (
           <section className="account-settings" id="account-settings" aria-labelledby="account-settings-heading">
             <div className="account-settings-heading">
               <div>
@@ -177,8 +184,7 @@ export default function Dashboard() {
                 {accountSettingsOpen ? 'Close account settings' : 'Manage account'}
               </button>
             </div>
-            {accountSettingsOpen && (
-              <div className="account-settings-panel" id="account-settings-panel">
+            <div className="account-settings-panel" id="account-settings-panel">
                 <div>
                   <strong>{user?.username}</strong>
                   <p className="muted">{user?.email}</p>
@@ -194,8 +200,7 @@ export default function Dashboard() {
                 >
                   Delete account
                 </button>
-              </div>
-            )}
+            </div>
           </section>
         )}
         <Link to="/room/new" className="new-room-card">
