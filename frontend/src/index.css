@@ -2538,12 +2538,6 @@ a {
   font-size: 10px;
 }
 
-.workspace-controls .workspace-diamond-button[aria-pressed="true"] {
-  border-color: var(--accent);
-  background: rgba(130, 214, 168, 0.12);
-  color: var(--accent-strong);
-}
-
 .workspace-controls span {
   min-width: 42px;
   color: var(--text-muted);

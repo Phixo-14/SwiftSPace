@@ -72,7 +72,6 @@ export default function RoomEditor() {
   const [zoom, setZoom] = useState(1);
   const [fitZoom, setFitZoom] = useState(1);
   const [platformRotation, setPlatformRotation] = useState(0);
-  const [platformDiamond, setPlatformDiamond] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [status, setStatus] = useState('');
@@ -774,7 +773,7 @@ export default function RoomEditor() {
       const { width, height } = canvas.getBoundingClientRect();
       const platformWidth = dimensions.width * 43;
       const platformHeight = dimensions.length * 43;
-      const angle = (platformRotation + (platformDiamond ? 45 : 0)) * Math.PI / 180;
+      const angle = platformRotation * Math.PI / 180;
       const cosine = Math.abs(Math.cos(angle));
       const sine = Math.abs(Math.sin(angle));
       const rotatedWidth = platformWidth * cosine + platformHeight * sine;
@@ -794,7 +793,7 @@ export default function RoomEditor() {
     const observer = new ResizeObserver(fitPlatform);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [dimensions.width, dimensions.length, loading, platformDiamond, platformRotation]);
+  }, [dimensions.width, dimensions.length, loading, platformRotation]);
 
   function formatTimer(seconds) {
     const hours = Math.floor(seconds / 3600).toString().padStart(2, '0');
@@ -940,22 +939,13 @@ export default function RoomEditor() {
             <button className="workspace-history-button" type="button" onClick={undoEdit} disabled={!canUndo} title="Undo the last room change">Undo</button>
             <button className="workspace-history-button" type="button" onClick={redoEdit} disabled={!canRedo} title="Redo the last undone room change">Redo</button>
             <span className="workspace-control-separator" aria-hidden="true" />
-            <button type="button" onClick={() => setPlatformRotation((current) => (current + 270) % 360)} title="Rotate platform counterclockwise" aria-label="Rotate platform counterclockwise">
-              ↶
+            <button type="button" onClick={() => setPlatformRotation((current) => (current + 45) % 360)} title="Rotate platform 45 degrees clockwise" aria-label="Rotate platform 45 degrees clockwise">
+              ↻
             </button>
-            <button type="button" onClick={() => setPlatformRotation((current) => (current + 90) % 360)} title="Rotate platform clockwise" aria-label="Rotate platform clockwise">
-              ↷
-            </button>
-            <button type="button" onClick={() => { setPlatformRotation(0); setPlatformDiamond(false); }} disabled={platformRotation === 0 && !platformDiamond} title="Reset platform orientation" aria-label="Reset platform orientation">
-              0°
-            </button>
-            <button className="workspace-diamond-button" type="button" aria-label="Toggle diamond platform view" aria-pressed={platformDiamond} title={platformDiamond ? 'Switch to square platform view' : 'Switch to diamond platform view'} onClick={() => setPlatformDiamond((current) => !current)}>
-              ◇
-            </button>
-            <span aria-live="polite">{(platformRotation + (platformDiamond ? 45 : 0)) % 360}°</span>
+            <span aria-live="polite">{platformRotation}°</span>
           </div>
           {hoverError && <div className="placement-warning">{hoverError}</div>}
-          <div className="workspace-zoom" style={{ transform: `scale(${zoom * fitZoom}) rotate(${platformRotation + (platformDiamond ? 45 : 0)}deg)` }}>
+          <div className="workspace-zoom" style={{ transform: `scale(${zoom * fitZoom}) rotate(${platformRotation}deg)` }}>
             <div
               className="iso-grid"
               style={{
@@ -1017,7 +1007,7 @@ export default function RoomEditor() {
                       iconKey={previewItem.catalogItem.iconKey}
                       color={previewItem.catalogItem.defaultColor}
                       rotation={0}
-                      isometric={platformDiamond}
+                      isometric={platformRotation % 90 !== 0}
                     />
                   </span>
                 </div>
@@ -1057,7 +1047,7 @@ export default function RoomEditor() {
                         iconKey={catalogItem.iconKey}
                         color={item.customColor || catalogItem.defaultColor}
                         rotation={displayRotation}
-                        isometric={platformDiamond}
+                        isometric={platformRotation % 90 !== 0}
                       />
                     </span>
                   </button>
@@ -1344,7 +1334,7 @@ export default function RoomEditor() {
                         '--item-color': item.customColor || catalogItem.defaultColor,
                       }}
                     >
-                      <ItemGlyph iconKey={catalogItem.iconKey} color={item.customColor || catalogItem.defaultColor} rotation={item.rotation} isometric={platformDiamond} />
+                      <ItemGlyph iconKey={catalogItem.iconKey} color={item.customColor || catalogItem.defaultColor} rotation={item.rotation} isometric={platformRotation % 90 !== 0} />
                     </div>
                   );
                 })}
