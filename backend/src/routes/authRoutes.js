@@ -11,6 +11,7 @@ router.post('/login', loginLimiter, validateBody(loginSchema), login);
 router.post('/admin-login', loginLimiter, validateBody(loginSchema), adminLogin);
 router.post('/firebase-sync', validateBody(firebaseSyncSchema), firebaseSync);
 router.post('/firebase-user-deleted', validateBody(firebaseDeleteSchema), deleteFirebaseUser);
+router.get('/me', requireAuth, (req, res) => res.json({ user: req.user }));
 router.delete('/account', requireAuth, validateBody(accountDeleteSchema), deleteAccount);
 router.post('/admin/sync-firebase-users', requireAuth, requireAdmin, syncFirebaseUsers);
 router.post('/verify-email', validateBody(verificationSchema), verifyEmail);

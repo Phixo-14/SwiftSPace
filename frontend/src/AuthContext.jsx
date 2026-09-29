@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import api from './api.js';
 
 const AuthContext = createContext(null);
 
@@ -19,6 +20,25 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('rd_user');
     setUser(null);
   }, []);
+
+  useEffect(() => {
+    if (!localStorage.getItem('rd_token')) return undefined;
+    let active = true;
+
+    api.get('/auth/me')
+      .then(({ data }) => {
+        if (!active) return;
+        localStorage.setItem('rd_user', JSON.stringify(data.user));
+        setUser(data.user);
+      })
+      .catch((error) => {
+        if (active && error.response?.status === 401) logout();
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [logout]);
 
   const isAdmin = Boolean(user?.role === 'admin');
 
