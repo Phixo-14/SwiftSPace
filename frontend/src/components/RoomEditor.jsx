@@ -544,11 +544,10 @@ export default function RoomEditor() {
     setItemRotation((selectedItem.rotation + 270) % 360);
   }
 
-  function commitRotationDraft() {
-    if (rotationDraft === null) return;
-    const nextRotation = rotationDraft;
+  function commitRotationDraft(nextRotation = rotationDraft) {
+    if (nextRotation === null || !Number.isFinite(Number(nextRotation))) return;
     setRotationDraft(null);
-    setItemRotation(nextRotation);
+    setItemRotation(Number(nextRotation));
   }
 
   function moveItem(itemToMove, gridX, gridY) {
@@ -1225,13 +1224,14 @@ export default function RoomEditor() {
                 <input
                   type="range"
                   min={0}
-                  max={360}
+                  max={359}
                   step={1}
                   value={rotationDraft ?? selectedItem.rotation}
-                  aria-label="Furniture angle from 0 to 360 degrees"
+                  aria-label="Furniture angle from 0 to 359 degrees"
                   onChange={(event) => setRotationDraft(Number(event.target.value))}
-                  onPointerUp={commitRotationDraft}
-                  onKeyUp={commitRotationDraft}
+                  onPointerUp={(event) => commitRotationDraft(event.currentTarget.value)}
+                  onKeyUp={(event) => commitRotationDraft(event.currentTarget.value)}
+                  onBlur={(event) => commitRotationDraft(event.currentTarget.value)}
                 />
               </label>
               <label className="inspector-field">
