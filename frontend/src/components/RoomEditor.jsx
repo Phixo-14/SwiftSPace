@@ -6,6 +6,7 @@ import ItemGlyph from './ItemGlyph.jsx';
 
 const DEFAULT_DIMENSIONS = { width: 6, length: 6 };
 const DEFAULT_MEASUREMENTS = { width: '', length: '', unit: 'ft' };
+const HISTORY_LIMIT = 50;
 const FLOOR_OPTIONS = [
   { name: 'Light Oak', floor: '#BCA17A', grid: '#8C7455', workspace: '#4B5048' },
   { name: 'Honey Brown', floor: '#9E6D49', grid: '#704A32', workspace: '#454A46' },
@@ -70,6 +71,8 @@ export default function RoomEditor() {
   const [draggedItem, setDraggedItem] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [platformRotation, setPlatformRotation] = useState(0);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -85,6 +88,8 @@ export default function RoomEditor() {
   const [versionError, setVersionError] = useState('');
   const [versionMessage, setVersionMessage] = useState('');
   const baselineRef = useRef(null);
+  const historyRef = useRef({ scope: null, past: [], future: [], current: null });
+  const historyReadyScopeRef = useRef(null);
 
   function getEditorSnapshot(snapshotPlacedItems = placedItems) {
     return JSON.stringify({
@@ -100,9 +105,50 @@ export default function RoomEditor() {
     });
   }
 
+  function applyEditorSnapshot(serializedSnapshot) {
+    const snapshot = JSON.parse(serializedSnapshot);
+    setRoomName(snapshot.roomName);
+    setClientName(snapshot.clientName);
+    setMeasurements(snapshot.measurements);
+    setDesignNotes(snapshot.designNotes);
+    setDimensions(snapshot.dimensions);
+    setFloorColor(snapshot.floorColor);
+    setGridColor(snapshot.gridColor);
+    const floorOption = FLOOR_OPTIONS.find((option) => option.floor === snapshot.floorColor);
+    setWorkspaceColor(floorOption?.workspace || FLOOR_OPTIONS[0].workspace);
+    setPlacedItems(snapshot.placedItems);
+    setOverlapRecords(snapshot.overlapRecords);
+    setSelectedKey(null);
+    setRotationDraft(null);
+  }
+
+  function undoEdit() {
+    const history = historyRef.current;
+    if (!history.past.length) return;
+    const previousSnapshot = history.past.pop();
+    if (history.current !== null) history.future.push(history.current);
+    history.current = previousSnapshot;
+    setCanUndo(history.past.length > 0);
+    setCanRedo(history.future.length > 0);
+    applyEditorSnapshot(previousSnapshot);
+  }
+
+  function redoEdit() {
+    const history = historyRef.current;
+    if (!history.future.length) return;
+    const nextSnapshot = history.future.pop();
+    if (history.current !== null) history.past.push(history.current);
+    history.current = nextSnapshot;
+    setCanUndo(history.past.length > 0);
+    setCanRedo(history.future.length > 0);
+    applyEditorSnapshot(nextSnapshot);
+  }
+
   // Load catalog once, and the existing room if we're editing one.
   useEffect(() => {
     let cancelled = false;
+    const historyScope = id || 'new';
+    historyReadyScopeRef.current = null;
 
     function restoreDraft() {
       const savedDraft = window.localStorage.getItem(draftStorageKey);
@@ -169,6 +215,7 @@ export default function RoomEditor() {
         if (!cancelled) setStatus('Could not load room data.');
       } finally {
         if (!cancelled) {
+          historyReadyScopeRef.current = historyScope;
           setLoading(false);
           setDraftReady(true);
         }
@@ -224,6 +271,28 @@ export default function RoomEditor() {
     }
     setIsDirty(snapshot !== baselineRef.current);
   });
+
+  useEffect(() => {
+    const historyScope = id || 'new';
+    if (loading || !draftReady || historyReadyScopeRef.current !== historyScope) return;
+
+    const snapshot = getEditorSnapshot();
+    const history = historyRef.current;
+    if (history.scope !== historyScope || history.current === null) {
+      historyRef.current = { scope: historyScope, past: [], future: [], current: snapshot };
+      setCanUndo(false);
+      setCanRedo(false);
+      return;
+    }
+    if (history.current === snapshot) return;
+
+    history.past.push(history.current);
+    if (history.past.length > HISTORY_LIMIT) history.past.shift();
+    history.current = snapshot;
+    history.future = [];
+    setCanUndo(true);
+    setCanRedo(false);
+  }, [clientName, designNotes, dimensions, draftReady, floorColor, gridColor, id, loading, measurements, overlapRecords, placedItems, roomName]);
 
   useEffect(() => {
     if (loading || !draftReady) return undefined;
@@ -463,10 +532,16 @@ export default function RoomEditor() {
     setStatus('');
   }
 
-  function rotateSelected() {
+  function rotateSelectedClockwise() {
     if (!selectedItem) return;
     setRotationDraft(null);
     setItemRotation((selectedItem.rotation + 90) % 360);
+  }
+
+  function rotateSelectedCounterclockwise() {
+    if (!selectedItem) return;
+    setRotationDraft(null);
+    setItemRotation((selectedItem.rotation + 270) % 360);
   }
 
   function commitRotationDraft() {
@@ -830,6 +905,8 @@ export default function RoomEditor() {
               +
             </button>
             <span>{Math.round(zoom * 100)}%</span>
+            <button className="workspace-history-button" type="button" onClick={undoEdit} disabled={!canUndo} title="Undo the last room change">Undo</button>
+            <button className="workspace-history-button" type="button" onClick={redoEdit} disabled={!canRedo} title="Redo the last undone room change">Redo</button>
             <span className="workspace-control-separator" aria-hidden="true" />
             <button type="button" onClick={() => setPlatformRotation((current) => (current + 270) % 360)} title="Rotate platform counterclockwise" aria-label="Rotate platform counterclockwise">
               ↶
@@ -1128,10 +1205,18 @@ export default function RoomEditor() {
                 <button
                   className="btn-ghost"
                   type="button"
-                  onClick={rotateSelected}
-                  aria-label={`Rotate furniture to ${(selectedItem.rotation + 90) % 360} degrees`}
+                  onClick={rotateSelectedCounterclockwise}
+                  aria-label={`Rotate furniture left to ${(selectedItem.rotation + 270) % 360} degrees`}
                 >
-                  ↻ Rotate 90°
+                  ↶ Rotate left
+                </button>
+                <button
+                  className="btn-ghost"
+                  type="button"
+                  onClick={rotateSelectedClockwise}
+                  aria-label={`Rotate furniture right to ${(selectedItem.rotation + 90) % 360} degrees`}
+                >
+                  ↷ Rotate right
                 </button>
                 <button className="btn-ghost danger" onClick={removeSelected}>Remove</button>
               </div>
