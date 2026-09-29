@@ -62,6 +62,28 @@ export default function Login() {
       login(data.token, data.user);
       navigate('/');
     } catch (err) {
+      const firebaseCredentialErrors = [
+        'auth/invalid-credential',
+        'auth/invalid-login-credentials',
+        'auth/user-not-found',
+        'auth/wrong-password',
+      ];
+      if (firebaseConfigured && firebaseCredentialErrors.includes(err.code)) {
+        try {
+          const { data } = await api.post('/auth/admin-login', { email, password });
+          login(data.token, data.user);
+          navigate('/');
+          return;
+        } catch (adminError) {
+          if (adminError.response?.status !== 401) {
+            const adminRetrySeconds = Number(adminError.response?.headers?.['retry-after']);
+            if (adminError.response?.status === 429) setRetryAfter(adminRetrySeconds || 900);
+            setError(adminError.response?.data?.message || adminError.message || 'Could not sign in.');
+            return;
+          }
+        }
+      }
+
       const firebaseMessages = {
         'auth/invalid-credential': 'Incorrect Firebase email or password.',
         'auth/invalid-login-credentials': 'Incorrect Firebase email or password.',

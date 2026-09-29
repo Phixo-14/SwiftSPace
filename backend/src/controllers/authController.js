@@ -152,6 +152,25 @@ async function login(req, res) {
   }
 }
 
+async function adminLogin(req, res) {
+  const { email, password } = req.body;
+  try {
+    const user = await User.findOne({ email, role: 'admin' });
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      return res.status(401).json({ message: 'Invalid administrator email or password.' });
+    }
+
+    const token = signToken(user);
+    res.json({
+      token,
+      user: { id: user._id, username: user.username, email: user.email, role: user.role },
+    });
+  } catch (error) {
+    console.error(`Admin login failed for ${email}:`, error);
+    res.status(500).json({ message: 'Admin login service error. Check the backend logs.' });
+  }
+}
+
 // POST /api/auth/firebase-sync — verifies a Firebase email-link identity and syncs it to MongoDB.
 async function firebaseSync(req, res) {
   const firebase = getFirebaseAdmin();
@@ -525,4 +544,4 @@ async function getAdminOverview(req, res) {
   });
 }
 
-module.exports = { register, login, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, syncFirebaseUsersFromFirebase, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview };
+module.exports = { register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, syncFirebaseUsersFromFirebase, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview };
