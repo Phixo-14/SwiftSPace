@@ -334,6 +334,18 @@ a {
   margin-top: auto;
 }
 
+.room-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: auto;
+}
+
+.room-card-actions .btn-ghost {
+  padding: 0.45rem 0.6rem;
+  font-size: 11px;
+}
+
 .shared-room-page {
   width: min(1120px, 100%);
   margin: 0 auto;
@@ -2482,6 +2494,90 @@ a {
   width: 48px;
   padding: 2px;
   height: 30px;
+}
+
+.designer-project-fields {
+  display: grid;
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.designer-project-fields .inspector-field {
+  display: grid;
+  align-items: start;
+  justify-content: stretch;
+  gap: 0.35rem;
+  margin-bottom: 0;
+}
+
+.designer-project-fields input,
+.designer-project-fields select,
+.designer-project-fields textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--panel-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.designer-project-fields textarea {
+  resize: vertical;
+}
+
+.designer-measurements {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.designer-measurements .inspector-field:last-child {
+  grid-column: 1 / -1;
+}
+
+.designer-version-panel {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.25rem;
+}
+
+.designer-version-panel form {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.designer-version-panel form .btn-ghost {
+  justify-self: start;
+}
+
+.designer-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+
+.designer-version-row span {
+  display: grid;
+  min-width: 0;
+  gap: 0.15rem;
+}
+
+.designer-version-row strong,
+.designer-version-row small {
+  overflow-wrap: anywhere;
+}
+
+.designer-version-row small {
+  color: var(--text-muted);
+  font-size: 10px;
 }
 
 .divider {

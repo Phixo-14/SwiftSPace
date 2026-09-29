@@ -9,6 +9,7 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [deletingRoomId, setDeletingRoomId] = useState(null);
   const [roomPendingDeletion, setRoomPendingDeletion] = useState(null);
+  const [duplicatingRoomId, setDuplicatingRoomId] = useState(null);
   const [shareTarget, setShareTarget] = useState(null);
   const [shareUrl, setShareUrl] = useState('');
   const [shareError, setShareError] = useState('');
@@ -17,6 +18,7 @@ export default function Dashboard() {
   const [shareRevoking, setShareRevoking] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const { user, isAdmin, logout } = useAuth();
+  const isDesigner = user?.role === 'interior-designer';
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -59,6 +61,19 @@ export default function Dashboard() {
       setError('Could not delete that room.');
     } finally {
       setDeletingRoomId(null);
+    }
+  }
+
+  async function duplicateProject(room) {
+    setDuplicatingRoomId(room._id);
+    setError('');
+    try {
+      const { data } = await api.post(`/rooms/${room._id}/duplicate`);
+      setRooms((current) => [data, ...current]);
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Could not duplicate this project.');
+    } finally {
+      setDuplicatingRoomId(null);
     }
   }
 
@@ -113,8 +128,8 @@ export default function Dashboard() {
           <span className="admin-sidebar-label">Studio Grid</span>
         </div>
         <nav className="admin-sidebar-nav">
-          <a href="#dashboard-overview"><span className="admin-nav-icon">⌂</span><span className="admin-sidebar-label">My layouts</span></a>
-          <Link to="/room/new"><span className="admin-nav-icon">+</span><span className="admin-sidebar-label">New room</span></Link>
+          <a href="#dashboard-overview"><span className="admin-nav-icon">⌂</span><span className="admin-sidebar-label">{isDesigner ? 'Projects' : 'My layouts'}</span></a>
+          <Link to="/room/new"><span className="admin-nav-icon">+</span><span className="admin-sidebar-label">{isDesigner ? 'New project' : 'New room'}</span></Link>
           {!isAdmin && <Link to="/account"><span className="admin-nav-icon">◎</span><span className="admin-sidebar-label">Manage account</span></Link>}
         </nav>
       </aside>
@@ -134,27 +149,27 @@ export default function Dashboard() {
       <main className="dashboard-main">
         <div className="dashboard-heading" id="dashboard-overview">
           <div>
-            <p className="eyebrow">Workspace</p>
-            <h1>Your layouts</h1>
+            <p className="eyebrow">{isDesigner ? 'Client work' : 'Workspace'}</p>
+            <h1>{isDesigner ? 'My projects' : 'Your layouts'}</h1>
           </div>
-          <p className="dashboard-subtitle">Saved rooms and new ideas, all in one place.</p>
+          <p className="dashboard-subtitle">{isDesigner ? 'Projects, client details, and room layouts in one place.' : 'Saved rooms and new ideas, all in one place.'}</p>
         </div>
         <Link to="/room/new" className="new-room-card">
           <span className="new-room-icon">+</span>
-          <span className="new-room-title">New room</span>
-          <span className="new-room-copy">Start with a fresh floor plan</span>
+          <span className="new-room-title">{isDesigner ? 'New project' : 'New room'}</span>
+          <span className="new-room-copy">{isDesigner ? 'Start a client design project' : 'Start with a fresh floor plan'}</span>
         </Link>
 
         {loading && <p className="muted">Loading rooms…</p>}
         {error && <p className="form-error">{error}</p>}
 
         {!loading && !error && rooms.length === 0 && (
-          <p className="muted">No rooms yet — start one and it will show up here.</p>
+          <p className="muted">{isDesigner ? 'No projects yet. Start one to organize a client design.' : 'No rooms yet — start one and it will show up here.'}</p>
         )}
 
         {rooms.map((room) => (
           <article className="room-card" key={room._id}>
-            <Link to={`/room/${room._id}`} className="room-preview" aria-label={`Open ${room.roomName}`}>
+            <Link to={`/room/${room._id}`} className="room-preview" aria-label={`Open ${isDesigner ? 'project' : 'room'} ${room.roomName}`}>
               <span className="room-preview-grid">
                 {Array.from({ length: 12 }, (_, index) => (
                   <span className={`room-preview-cell ${index === 5 ? 'occupied' : ''}`} key={index} />
@@ -179,11 +194,22 @@ export default function Dashboard() {
               <p className="room-meta mono">
                 {room.dimensions.width} × {room.dimensions.length} grid
               </p>
+              {isDesigner && room.clientName && <p className="room-meta">Client: {room.clientName}</p>}
+              {isDesigner && (room.measurements?.width || room.measurements?.length) && (
+                <p className="room-meta mono">Measured {room.measurements.width || '—'} × {room.measurements.length || '—'} {room.measurements.unit}</p>
+              )}
               <p className="room-meta">Updated {new Date(room.updatedAt).toLocaleDateString()}</p>
             </Link>
-            <button className="btn-ghost room-share-button" type="button" onClick={() => openShare(room)}>
-              Share layout
-            </button>
+            <div className="room-card-actions">
+              {isDesigner && (
+                <button className="btn-ghost" type="button" onClick={() => duplicateProject(room)} disabled={duplicatingRoomId === room._id}>
+                  {duplicatingRoomId === room._id ? 'Duplicating…' : 'Duplicate layout'}
+                </button>
+              )}
+              <button className="btn-ghost" type="button" onClick={() => openShare(room)}>
+                {isDesigner ? 'Share with client' : 'Share layout'}
+              </button>
+            </div>
           </article>
         ))}
 

@@ -15,6 +15,13 @@ const RoomSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     roomName: { type: String, required: true, trim: true, maxlength: 60 },
+    clientName: { type: String, trim: true, maxlength: 120, default: '' },
+    measurements: {
+      width: { type: Number, min: 0.01, max: 10000, default: null },
+      length: { type: Number, min: 0.01, max: 10000, default: null },
+      unit: { type: String, enum: ['mm', 'cm', 'm', 'in', 'ft'], default: 'ft' },
+    },
+    designNotes: { type: String, maxlength: 5000, default: '' },
     shareToken: { type: String, unique: true, sparse: true },
     dimensions: {
       width: { type: Number, required: true, min: 1, max: 50 },

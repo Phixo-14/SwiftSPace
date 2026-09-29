@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import api from '../api.js';
+import { useAuth } from '../AuthContext.jsx';
 import ItemGlyph from './ItemGlyph.jsx';
 
 const DEFAULT_DIMENSIONS = { width: 6, length: 6 };
+const DEFAULT_MEASUREMENTS = { width: '', length: '', unit: 'ft' };
 const FLOOR_OPTIONS = [
   { name: 'Light Oak', floor: '#BCA17A', grid: '#8C7455', workspace: '#4B5048' },
   { name: 'Honey Brown', floor: '#9E6D49', grid: '#704A32', workspace: '#454A46' },
@@ -31,11 +33,16 @@ export default function RoomEditor() {
   const { id } = useParams();
   const isNew = !id;
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isDesigner = user?.role === 'interior-designer';
   const draftStorageKey = `studio-grid-draft:${id || 'new'}`;
   const storedDraft = readDraft(draftStorageKey);
 
   const [catalog, setCatalog] = useState([]);
-  const [roomName, setRoomName] = useState(storedDraft?.roomName || 'Untitled Studio');
+  const [roomName, setRoomName] = useState(storedDraft?.roomName || (isDesigner ? 'Untitled Project' : 'Untitled Studio'));
+  const [clientName, setClientName] = useState(storedDraft?.clientName || '');
+  const [measurements, setMeasurements] = useState(storedDraft?.measurements || DEFAULT_MEASUREMENTS);
+  const [designNotes, setDesignNotes] = useState(storedDraft?.designNotes || '');
   const [timerSeconds, setTimerSeconds] = useState(storedDraft?.timerSeconds || 0);
   const [timerRunning, setTimerRunning] = useState(true);
   const timerRunningRef = useRef(true);
@@ -62,11 +69,20 @@ export default function RoomEditor() {
   const [draftReady, setDraftReady] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [showExitPrompt, setShowExitPrompt] = useState(false);
+  const [versions, setVersions] = useState([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versionName, setVersionName] = useState('');
+  const [versionSaving, setVersionSaving] = useState(false);
+  const [versionError, setVersionError] = useState('');
+  const [versionMessage, setVersionMessage] = useState('');
   const baselineRef = useRef(null);
 
   function getEditorSnapshot() {
     return JSON.stringify({
       roomName,
+      clientName,
+      measurements,
+      designNotes,
       dimensions,
       floorColor,
       gridColor,
@@ -85,7 +101,10 @@ export default function RoomEditor() {
 
       try {
         const draft = JSON.parse(savedDraft);
-        setRoomName(draft.roomName || 'Untitled Studio');
+        setRoomName(draft.roomName || (isDesigner ? 'Untitled Project' : 'Untitled Studio'));
+        setClientName(draft.clientName || '');
+        setMeasurements(draft.measurements || DEFAULT_MEASUREMENTS);
+        setDesignNotes(draft.designNotes || '');
         setTimerSeconds(draft.timerSeconds || 0);
         setDimensions(draft.dimensions || DEFAULT_DIMENSIONS);
         setFloorColor(draft.floorColor || FLOOR_OPTIONS[0].floor);
@@ -114,6 +133,14 @@ export default function RoomEditor() {
             validCatalogIds.has(item.catalogItemId?.toString())
           );
           setRoomName(roomRes.data.roomName);
+          setClientName(roomRes.data.clientName || '');
+          const savedMeasurements = roomRes.data.measurements || {};
+          setMeasurements({
+            width: savedMeasurements.width ?? '',
+            length: savedMeasurements.length ?? '',
+            unit: savedMeasurements.unit || 'ft',
+          });
+          setDesignNotes(roomRes.data.designNotes || '');
           setTimerSeconds(roomRes.data.timerSeconds || 0);
           setDimensions(roomRes.data.dimensions);
           setFloorColor(roomRes.data.floorColor || FLOOR_OPTIONS[0].floor);
@@ -139,12 +166,34 @@ export default function RoomEditor() {
     return () => {
       cancelled = true;
     };
-  }, [draftStorageKey, id, isNew]);
+  }, [draftStorageKey, id, isDesigner, isNew]);
+
+  useEffect(() => {
+    if (!isDesigner || isNew) return undefined;
+    let cancelled = false;
+    setVersionsLoading(true);
+    api.get(`/rooms/${id}/versions`)
+      .then(({ data }) => {
+        if (!cancelled) setVersions(data);
+      })
+      .catch((requestError) => {
+        if (!cancelled) setVersionError(requestError.response?.data?.message || 'Could not load versions.');
+      })
+      .finally(() => {
+        if (!cancelled) setVersionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, isDesigner, isNew]);
 
   useEffect(() => {
     if (loading || !draftReady) return;
     window.localStorage.setItem(draftStorageKey, JSON.stringify({
       roomName,
+      clientName,
+      measurements,
+      designNotes,
       timerSeconds,
       dimensions,
       floorColor,
@@ -152,7 +201,7 @@ export default function RoomEditor() {
       placedItems,
       overlapRecords,
     }));
-  }, [dimensions, draftReady, draftStorageKey, floorColor, gridColor, loading, overlapRecords, placedItems, roomName, timerSeconds]);
+  }, [clientName, designNotes, dimensions, draftReady, draftStorageKey, floorColor, gridColor, loading, measurements, overlapRecords, placedItems, roomName, timerSeconds]);
 
   useEffect(() => {
     if (loading || !draftReady) return;
@@ -495,7 +544,22 @@ export default function RoomEditor() {
     const validPlacedItems = placedItems.filter((item) =>
       catalogById.has(item.catalogItemId?.toString())
     );
-    const payload = { roomName, timerSeconds, dimensions, floorColor, gridColor, placedItems: validPlacedItems, overlapRecords };
+    const payload = {
+      roomName,
+      clientName,
+      measurements: {
+        width: measurements.width === '' ? null : Number(measurements.width),
+        length: measurements.length === '' ? null : Number(measurements.length),
+        unit: measurements.unit,
+      },
+      designNotes,
+      timerSeconds,
+      dimensions,
+      floorColor,
+      gridColor,
+      placedItems: validPlacedItems,
+      overlapRecords,
+    };
     try {
       if (isNew) {
         const { data } = await api.post('/rooms', payload);
@@ -522,6 +586,45 @@ export default function RoomEditor() {
       return false;
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveVersion(event) {
+    event.preventDefault();
+    const name = versionName.trim();
+    if (!name) {
+      setVersionError('Enter a name for this version.');
+      return;
+    }
+    if (isDirty && !(await handleSave())) return;
+
+    setVersionSaving(true);
+    setVersionError('');
+    setVersionMessage('');
+    try {
+      const { data } = await api.post(`/rooms/${id}/versions`, { name });
+      setVersions((current) => [data, ...current].slice(0, 20));
+      setVersionName('');
+      setVersionMessage('Version saved.');
+    } catch (requestError) {
+      setVersionError(requestError.response?.data?.message || 'Could not save this version.');
+    } finally {
+      setVersionSaving(false);
+    }
+  }
+
+  async function restoreVersion(version) {
+    if (isDirty && !window.confirm('Discard unsaved changes and restore this version?')) return;
+    if (!isDirty && !window.confirm(`Restore ${version.name}?`)) return;
+    setVersionSaving(true);
+    setVersionError('');
+    try {
+      await api.post(`/rooms/${id}/versions/${version._id}/restore`);
+      window.localStorage.removeItem(draftStorageKey);
+      window.location.reload();
+    } catch (requestError) {
+      setVersionError(requestError.response?.data?.message || 'Could not restore this version.');
+      setVersionSaving(false);
     }
   }
 
@@ -579,12 +682,12 @@ export default function RoomEditor() {
     <div className="page editor-page">
       <header className="topbar">
         <div className="editor-title-block">
-          <Link to="/" className="back-link" onClick={handleBackClick}>← Dashboard</Link>
+          <Link to="/" className="back-link" onClick={handleBackClick}>← {isDesigner ? 'Projects' : 'Dashboard'}</Link>
           <input
             className="room-name-input"
             value={roomName}
             onChange={(e) => setRoomName(e.target.value)}
-            aria-label="Room name"
+            aria-label={isDesigner ? 'Project name' : 'Room name'}
           />
         </div>
         <div className="topbar-actions">
@@ -808,6 +911,57 @@ export default function RoomEditor() {
         </main>
 
         <aside className="inspector-panel">
+          {isDesigner && (
+            <section className="designer-project-fields">
+              <p className="panel-heading">Project details</p>
+              <label className="inspector-field">
+                Client name
+                <input value={clientName} maxLength={120} onChange={(event) => setClientName(event.target.value)} />
+              </label>
+              <div className="designer-measurements">
+                <label className="inspector-field">
+                  Measured width
+                  <input type="number" min="0.01" step="0.01" value={measurements.width} onChange={(event) => setMeasurements((current) => ({ ...current, width: event.target.value }))} />
+                </label>
+                <label className="inspector-field">
+                  Measured length
+                  <input type="number" min="0.01" step="0.01" value={measurements.length} onChange={(event) => setMeasurements((current) => ({ ...current, length: event.target.value }))} />
+                </label>
+                <label className="inspector-field">
+                  Unit
+                  <select value={measurements.unit} onChange={(event) => setMeasurements((current) => ({ ...current, unit: event.target.value }))}>
+                    <option value="ft">Feet</option><option value="in">Inches</option><option value="m">Meters</option><option value="cm">Centimeters</option><option value="mm">Millimeters</option>
+                  </select>
+                </label>
+              </div>
+              <label className="inspector-field">
+                Design notes
+                <textarea rows={4} maxLength={5000} value={designNotes} onChange={(event) => setDesignNotes(event.target.value)} />
+              </label>
+              {!isNew && (
+                <div className="designer-version-panel">
+                  <p className="panel-heading">Saved versions</p>
+                  <form onSubmit={handleSaveVersion}>
+                    <label className="inspector-field">
+                      Version name
+                      <input value={versionName} maxLength={60} onChange={(event) => setVersionName(event.target.value)} placeholder="e.g. Initial concept" />
+                    </label>
+                    <button className="btn-ghost" type="submit" disabled={versionSaving}>{versionSaving ? 'Saving…' : 'Save version'}</button>
+                  </form>
+                  {versionsLoading && <p className="muted small">Loading versions…</p>}
+                  {versionError && <p className="form-error" role="alert">{versionError}</p>}
+                  {versionMessage && <p className="form-success" role="status">{versionMessage}</p>}
+                  {versions.map((version) => (
+                    <div className="designer-version-row" key={version._id}>
+                      <span><strong>{version.name}</strong><small>{new Date(version.createdAt).toLocaleString()}</small></span>
+                      <button className="btn-ghost" type="button" onClick={() => restoreVersion(version)} disabled={versionSaving}>Restore</button>
+                    </div>
+                  ))}
+                  {!versionsLoading && versions.length === 0 && <p className="muted small">No versions saved yet.</p>}
+                </div>
+              )}
+            </section>
+          )}
           <p className="panel-heading">Room</p>
           <label className="inspector-field">
             Width

@@ -61,6 +61,13 @@ const overlapRecordSchema = Joi.object({
 // can't know the sibling dimensions value of each array item.
 const roomSchema = Joi.object({
   roomName: Joi.string().trim().min(1).max(60).required(),
+  clientName: Joi.string().trim().max(120).allow('').default(''),
+  measurements: Joi.object({
+    width: Joi.number().positive().max(10000).allow(null).default(null),
+    length: Joi.number().positive().max(10000).allow(null).default(null),
+    unit: Joi.string().valid('mm', 'cm', 'm', 'in', 'ft').default('ft'),
+  }).default(),
+  designNotes: Joi.string().max(5000).allow('').default(''),
   timerSeconds: Joi.number().integer().min(0).max(31536000).default(0),
   dimensions: Joi.object({
     width: Joi.number().integer().min(1).max(50).required(),
@@ -70,6 +77,10 @@ const roomSchema = Joi.object({
   gridColor: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).default('#8C7455'),
   placedItems: Joi.array().items(placedItemSchema).default([]),
   overlapRecords: Joi.array().items(overlapRecordSchema).max(100).default([]),
+});
+
+const roomVersionSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(60).required(),
 });
 
 function validateBody(schema) {
@@ -86,4 +97,4 @@ function validateBody(schema) {
   };
 }
 
-module.exports = { registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, firebaseDeleteSchema, adminSchema, roomSchema, validateBody };
+module.exports = { registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, firebaseDeleteSchema, adminSchema, roomSchema, roomVersionSchema, validateBody };

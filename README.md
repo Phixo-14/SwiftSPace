@@ -201,9 +201,15 @@ Open that URL in your browser.
    not the full item array).
 5. Click the room again to reopen it via `GET /api/rooms/:id`, which loads
    the full document including `placedItems`.
-6. Click **Share layout** on a saved room to create a read-only link. Copy it
-  for a client, and revoke it from the same dialog whenever access should end.
-  Shared layouts open at `/share/:token` without requiring an account.
+6. Click **Share layout** on a saved room to create a read-only link. Interior
+  designers see **Share with client**. Copy the link and revoke it whenever
+  access should end. Shared layouts open at `/share/:token` without an account.
+7. Interior designers can create multiple projects from **New project**, add
+  client names, measured room dimensions, and design notes in the editor, and
+  save the canvas.
+8. Reopen a project to save named versions or restore an earlier version.
+  **Duplicate layout** creates a separate project copy; each project keeps its
+  own share link. The latest 20 versions are retained per project.
 
 ---
 
@@ -214,12 +220,14 @@ Open that URL in your browser.
 | `POST /api/auth/register`, login | `backend/src/routes/authRoutes.js`, `authController.js` — bcrypt-hashed password, JWT issued on success |
 | `GET /api/catalog/items` | `catalogRoutes.js` / `catalogController.js` |
 | `GET /api/rooms`, `POST /api/rooms`, `PUT /api/rooms/:id` | `roomRoutes.js` / `roomController.js` |
+| Designer client, measurement, and note fields | `models/Room.js` persisted by `roomController.js`, edited from `RoomEditor.jsx` |
 | `POST /api/rooms/:id/share`, `DELETE /api/rooms/:id/share`, `GET /api/shared-rooms/:token` | Owner-controlled share links and public read-only room access |
+| `GET /api/rooms/:id/versions`, `POST /api/rooms/:id/versions`, `POST /api/rooms/:id/versions/:versionId/restore`, `POST /api/rooms/:id/duplicate` | Interior-designer-only version history, restore, and layout duplication |
 | MVC structure | `models/`, `controllers/`, `routes/` folders |
 | Nested JSON document / embedding | `models/Room.js` — `placedItems` is an embedded array, matching your sample document |
 | JWT auth + ownership check | `middleware/auth.js` (verifies token) + `roomController.js` (checks `room.userId === req.user.id` on every read/update/delete) |
 | Joi input validation | `middleware/validators.js` — validates registration, login, and room payloads (including that `gridX`/`gridY` are real numbers) |
-| Projection for dashboard speed | `roomController.getRooms` — `.select('roomName dimensions createdAt updatedAt')` |
+| Projection for dashboard speed | `roomController.getRooms` — project summary fields only, without `placedItems` |
 | `userId` index | `models/Room.js` — `RoomSchema.index({ userId: 1 })` |
 
 A few things worth knowing about this prototype vs. a production build:

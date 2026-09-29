@@ -5,6 +5,7 @@ const nodemailer = require('nodemailer');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Room = require('../models/Room');
+const RoomVersion = require('../models/RoomVersion');
 const CatalogItem = require('../models/CatalogItem');
 const RoomTimer = require('../models/RoomTimer');
 const PlacementError = require('../models/PlacementError');
@@ -207,6 +208,7 @@ async function firebaseSync(req, res) {
 async function deleteUserData(userIds) {
   await Promise.all([
     Room.deleteMany({ userId: { $in: userIds } }),
+    RoomVersion.deleteMany({ userId: { $in: userIds } }),
     RoomTimer.deleteMany({ userId: { $in: userIds } }),
     PlacementError.deleteMany({ userId: { $in: userIds } }),
     User.deleteMany({ _id: { $in: userIds } }),

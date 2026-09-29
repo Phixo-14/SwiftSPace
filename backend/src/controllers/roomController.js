@@ -2,6 +2,7 @@ const Room = require('../models/Room');
 const CatalogItem = require('../models/CatalogItem');
 const RoomTimer = require('../models/RoomTimer');
 const PlacementError = require('../models/PlacementError');
+const RoomVersion = require('../models/RoomVersion');
 const crypto = require('crypto');
 
 async function getRoomExtras(roomId) {
@@ -83,7 +84,7 @@ async function assertItemsFitAndExist(dimensions, placedItems) {
 // array never crosses the wire just to render a list of room names/dates.
 async function getRooms(req, res) {
   const rooms = await Room.find({ userId: req.user.id })
-    .select('roomName dimensions createdAt updatedAt')
+    .select('roomName clientName measurements dimensions createdAt updatedAt')
     .sort({ updatedAt: -1 });
 
   const roomIds = rooms.map((room) => room._id);
@@ -110,12 +111,22 @@ async function getRoomById(req, res) {
 
 // POST /api/rooms
 async function createRoom(req, res) {
-  const { roomName, timerSeconds, dimensions, floorColor, gridColor, placedItems, overlapRecords } = req.body;
+  const { roomName, clientName, measurements, designNotes, timerSeconds, dimensions, floorColor, gridColor, placedItems, overlapRecords } = req.body;
 
   const fitError = await assertItemsFitAndExist(dimensions, placedItems);
   if (fitError) return res.status(400).json({ message: fitError });
 
-  const room = await Room.create({ userId: req.user.id, roomName, dimensions, floorColor, gridColor, placedItems });
+  const room = await Room.create({
+    userId: req.user.id,
+    roomName,
+    clientName,
+    measurements,
+    designNotes,
+    dimensions,
+    floorColor,
+    gridColor,
+    placedItems,
+  });
   try {
     await saveRoomExtras(room._id, req.user.id, timerSeconds, overlapRecords);
   } catch (error) {
@@ -132,12 +143,15 @@ async function updateRoom(req, res) {
     return res.status(403).json({ message: 'You do not have access to this room.' });
   }
 
-  const { roomName, timerSeconds, dimensions, floorColor, gridColor, placedItems, overlapRecords } = req.body;
+  const { roomName, clientName, measurements, designNotes, timerSeconds, dimensions, floorColor, gridColor, placedItems, overlapRecords } = req.body;
   const fitError = await assertItemsFitAndExist(dimensions, placedItems);
   if (fitError) return res.status(400).json({ message: fitError });
 
   try {
     room.roomName = roomName;
+    room.clientName = clientName;
+    room.measurements = measurements;
+    room.designNotes = designNotes;
     room.dimensions = dimensions;
     room.floorColor = floorColor;
     room.gridColor = gridColor;
@@ -162,8 +176,106 @@ async function deleteRoom(req, res) {
     room.deleteOne(),
     RoomTimer.deleteOne({ roomId: room._id }),
     PlacementError.deleteMany({ roomId: room._id }),
+    RoomVersion.deleteMany({ roomId: room._id }),
   ]);
   res.status(204).send();
+}
+
+async function duplicateRoom(req, res) {
+  const source = await Room.findById(req.params.id);
+  if (!source) return res.status(404).json({ message: 'Project not found.' });
+  if (source.userId.toString() !== req.user.id) {
+    return res.status(403).json({ message: 'You do not have access to this project.' });
+  }
+
+  const duplicate = await Room.create({
+    userId: req.user.id,
+    roomName: `${source.roomName} (Copy)`.slice(0, 60),
+    clientName: source.clientName,
+    measurements: source.measurements,
+    designNotes: source.designNotes,
+    dimensions: source.dimensions,
+    floorColor: source.floorColor,
+    gridColor: source.gridColor,
+    placedItems: source.placedItems,
+  });
+  res.status(201).json({ ...duplicate.toObject(), timerSeconds: 0, overlapRecords: [] });
+}
+
+async function getRoomVersions(req, res) {
+  const room = await Room.findById(req.params.id);
+  if (!room) return res.status(404).json({ message: 'Project not found.' });
+  if (room.userId.toString() !== req.user.id) {
+    return res.status(403).json({ message: 'You do not have access to this project.' });
+  }
+
+  const versions = await RoomVersion.find({ roomId: room._id, userId: req.user.id })
+    .select('_id name createdAt')
+    .sort({ createdAt: -1 });
+  res.json(versions);
+}
+
+async function createRoomVersion(req, res) {
+  const room = await Room.findById(req.params.id);
+  if (!room) return res.status(404).json({ message: 'Project not found.' });
+  if (room.userId.toString() !== req.user.id) {
+    return res.status(403).json({ message: 'You do not have access to this project.' });
+  }
+
+  const extras = await getRoomExtras(room._id);
+  const version = await RoomVersion.create({
+    roomId: room._id,
+    userId: req.user.id,
+    name: req.body.name,
+    snapshot: {
+      roomName: room.roomName,
+      clientName: room.clientName,
+      measurements: room.measurements,
+      designNotes: room.designNotes,
+      dimensions: room.dimensions,
+      floorColor: room.floorColor,
+      gridColor: room.gridColor,
+      placedItems: room.placedItems,
+      timerSeconds: extras.timerSeconds,
+      overlapRecords: extras.overlapRecords,
+    },
+  });
+
+  const expiredVersions = await RoomVersion.find({ roomId: room._id, userId: req.user.id })
+    .sort({ createdAt: -1 })
+    .skip(20)
+    .select('_id')
+    .lean();
+  if (expiredVersions.length) {
+    await RoomVersion.deleteMany({ _id: { $in: expiredVersions.map((savedVersion) => savedVersion._id) } });
+  }
+  res.status(201).json({ _id: version._id, name: version.name, createdAt: version.createdAt });
+}
+
+async function restoreRoomVersion(req, res) {
+  const room = await Room.findById(req.params.id);
+  if (!room) return res.status(404).json({ message: 'Project not found.' });
+  if (room.userId.toString() !== req.user.id) {
+    return res.status(403).json({ message: 'You do not have access to this project.' });
+  }
+
+  const version = await RoomVersion.findOne({ _id: req.params.versionId, roomId: room._id, userId: req.user.id });
+  if (!version) return res.status(404).json({ message: 'Project version not found.' });
+  const snapshot = version.snapshot;
+  const fitError = await assertItemsFitAndExist(snapshot.dimensions, snapshot.placedItems);
+  if (fitError) return res.status(400).json({ message: fitError });
+
+  room.roomName = snapshot.roomName;
+  room.clientName = snapshot.clientName;
+  room.measurements = snapshot.measurements;
+  room.designNotes = snapshot.designNotes;
+  room.dimensions = snapshot.dimensions;
+  room.floorColor = snapshot.floorColor;
+  room.gridColor = snapshot.gridColor;
+  room.placedItems = snapshot.placedItems;
+  await room.save();
+  await saveRoomExtras(room._id, req.user.id, snapshot.timerSeconds, snapshot.overlapRecords);
+  res.json({ ...room.toObject(), timerSeconds: snapshot.timerSeconds, overlapRecords: snapshot.overlapRecords });
 }
 
 async function createShareLink(req, res) {
@@ -205,4 +317,17 @@ async function getSharedRoom(req, res) {
   res.json(room);
 }
 
-module.exports = { getRooms, getRoomById, createRoom, updateRoom, deleteRoom, createShareLink, revokeShareLink, getSharedRoom };
+module.exports = {
+  getRooms,
+  getRoomById,
+  createRoom,
+  updateRoom,
+  deleteRoom,
+  duplicateRoom,
+  getRoomVersions,
+  createRoomVersion,
+  restoreRoomVersion,
+  createShareLink,
+  revokeShareLink,
+  getSharedRoom,
+};
