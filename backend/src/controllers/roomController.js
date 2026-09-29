@@ -105,13 +105,24 @@ async function getRooms(req, res) {
 // GET /api/rooms/:id
 // Full document, including placedItems, for opening a room in the canvas.
 async function getRoomById(req, res) {
-  const room = await Room.findById(req.params.id);
+  const room = await Room.findById(req.params.id).lean();
   if (!room) return res.status(404).json({ message: 'Room not found.' });
   if (room.userId.toString() !== req.user.id) {
     return res.status(403).json({ message: 'You do not have access to this room.' });
   }
+  const placedItems = room.placedItems || [];
+  if (placedItems.some((item) => !item.placementId)) {
+    room.placedItems = placedItems.map((item) => ({
+      ...item,
+      placementId: item.placementId || crypto.randomUUID(),
+    }));
+    await Room.updateOne(
+      { _id: room._id, userId: req.user.id },
+      { $set: { placedItems: room.placedItems } }
+    );
+  }
   const extras = await getRoomExtras(room._id);
-  res.json({ ...room.toObject(), ...extras });
+  res.json({ ...room, ...extras });
 }
 
 // POST /api/rooms

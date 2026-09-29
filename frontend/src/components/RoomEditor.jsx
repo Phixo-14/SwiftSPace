@@ -83,7 +83,7 @@ export default function RoomEditor() {
   const [versionMessage, setVersionMessage] = useState('');
   const baselineRef = useRef(null);
 
-  function getEditorSnapshot() {
+  function getEditorSnapshot(snapshotPlacedItems = placedItems) {
     return JSON.stringify({
       roomName,
       clientName,
@@ -92,7 +92,7 @@ export default function RoomEditor() {
       dimensions,
       floorColor,
       gridColor,
-      placedItems,
+      placedItems: snapshotPlacedItems,
       overlapRecords,
     });
   }
@@ -576,17 +576,21 @@ export default function RoomEditor() {
     try {
       if (isNew) {
         const { data } = await api.post('/rooms', payload);
+        const savedPlacedItems = data.placedItems || validPlacedItems;
+        setPlacedItems(savedPlacedItems);
         window.localStorage.removeItem(draftStorageKey);
         setStatus('Saved.');
-        baselineRef.current = getEditorSnapshot();
+        baselineRef.current = getEditorSnapshot(savedPlacedItems);
         setIsDirty(false);
         if (afterSave) afterSave(data);
         else navigate(`/room/${data._id}`, { replace: true });
       } else {
-        await api.put(`/rooms/${id}`, payload);
+        const { data } = await api.put(`/rooms/${id}`, payload);
+        const savedPlacedItems = data.placedItems || validPlacedItems;
+        setPlacedItems(savedPlacedItems);
         window.localStorage.removeItem(draftStorageKey);
         setStatus('Saved.');
-        baselineRef.current = getEditorSnapshot();
+        baselineRef.current = getEditorSnapshot(savedPlacedItems);
         setIsDirty(false);
         if (afterSave) afterSave();
       }
