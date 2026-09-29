@@ -15,7 +15,7 @@ async function requireAuth(req, res, next) {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(payload.id).select('_id username email role');
     if (!user) return res.status(401).json({ message: 'Invalid or expired token.' });
-    req.user = { id: user._id.toString(), username: user.username, email: user.email, role: user.role || 'user' };
+    req.user = { id: user._id.toString(), username: user.username, email: user.email, role: user.role || 'homeowner' };
     next();
   } catch (err) {
     return res.status(401).json({ message: 'Invalid or expired token.' });

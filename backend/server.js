@@ -94,6 +94,7 @@ const PORT = process.env.PORT || 5000;
 
 connectDB()
   .then(async () => {
+    await User.updateMany({ role: 'user' }, { $set: { role: 'homeowner' } });
     await ensureAdminAccount();
     await ensureCatalog();
     app.listen(PORT, () => console.log(`Room Designer API listening on port ${PORT}`));

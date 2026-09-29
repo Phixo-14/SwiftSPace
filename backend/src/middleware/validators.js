@@ -7,6 +7,7 @@ const registerSchema = Joi.object({
   username: Joi.string().trim().min(3).max(30).pattern(/^[A-Za-z]+(?: [A-Za-z]+)+$/).required(),
   email: Joi.string().email({ tlds: false }).required(),
   password: Joi.string().min(8).max(72).pattern(/[^A-Za-z0-9]/).required(),
+  role: Joi.string().valid('homeowner', 'interior-designer').default('homeowner'),
 });
 
 const loginSchema = Joi.object({
@@ -26,9 +27,10 @@ const emailSchema = Joi.object({
 const firebaseSyncSchema = Joi.object({
   idToken: Joi.string().required(),
   username: Joi.string().trim().min(3).max(30).pattern(/^[A-Za-z]+(?: [A-Za-z]+)+$/).required(),
+  role: Joi.string().valid('homeowner', 'interior-designer').default('homeowner'),
 });
 
-const adminSchema = registerSchema;
+const adminSchema = registerSchema.keys({ role: Joi.forbidden() });
 
 const placedItemSchema = Joi.object({
   catalogItemId: Joi.string().hex().length(24).required(),

@@ -9,6 +9,7 @@ export default function Register() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('homeowner');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -36,10 +37,11 @@ export default function Register() {
         await updateProfile(credential.user, { displayName: fullName });
         await sendEmailVerification(credential.user);
         sessionStorage.setItem('firebase_pending_username', fullName);
+        sessionStorage.setItem('firebase_pending_role', role);
         navigate(`/verify-email?email=${encodeURIComponent(email)}`);
         return;
       }
-      const { data } = await api.post('/auth/register', { username: fullName, email, password });
+      const { data } = await api.post('/auth/register', { username: fullName, email, password, role });
       navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
         state: { developmentCode: data.developmentCode, message: data.message },
       });
@@ -106,6 +108,13 @@ export default function Register() {
                 maxLength={30}
                 required
               />
+            </label>
+            <label>
+              I am a
+              <select value={role} onChange={(event) => setRole(event.target.value)} required>
+                <option value="homeowner">Homeowner / Client</option>
+                <option value="interior-designer">Interior Designer</option>
+              </select>
             </label>
             <label>
               Email

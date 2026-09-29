@@ -82,7 +82,7 @@ async function issueVerificationCode(user) {
 
 function signToken(user) {
   return jwt.sign(
-    { id: user._id.toString(), username: user.username, role: user.role || 'user' },
+    { id: user._id.toString(), username: user.username, role: user.role || 'homeowner' },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
@@ -90,11 +90,11 @@ function signToken(user) {
 
 // POST /api/auth/register
 async function register(req, res) {
-  const { username, email, password } = req.body;
+  const { username, email, password, role } = req.body;
 
   const existing = await User.findOne({ $or: [{ email }, { username }] });
   if (existing) {
-    if (existing.role !== 'user' || existing.emailVerified) {
+    if (existing.role === 'admin' || existing.emailVerified) {
       return res.status(409).json({ message: 'A user with that email or username already exists.' });
     }
     await existing.deleteOne();
@@ -106,6 +106,7 @@ async function register(req, res) {
     username,
     email,
     passwordHash,
+    role,
     emailVerified: false,
     emailVerificationCodeHash: hashVerificationCode(code),
     emailVerificationExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
@@ -141,7 +142,7 @@ async function login(req, res) {
     const token = signToken(user);
     res.json({
       token,
-      user: { id: user._id, username: user.username, email: user.email, role: user.role || 'user' },
+      user: { id: user._id, username: user.username, email: user.email, role: user.role || 'homeowner' },
     });
   } catch (error) {
     console.error(`Login failed for ${email}:`, error);
@@ -191,7 +192,7 @@ async function firebaseSync(req, res) {
       firebaseUid: decoded.uid,
       passwordHash: crypto.randomBytes(32).toString('hex'),
       emailVerified: true,
-      role: 'user',
+      role: req.body.role || 'homeowner',
     });
   } else {
     user.firebaseUid = decoded.uid;
@@ -238,7 +239,7 @@ async function syncFirebaseUsersFromFirebase() {
           email: firebaseUser.email,
           firebaseUid: firebaseUser.uid,
           passwordHash: crypto.randomBytes(32).toString('hex'),
-          role: 'user',
+          role: 'homeowner',
         });
       }
 
@@ -283,7 +284,7 @@ async function createAdmin(req, res) {
 
 // POST /api/auth/users — requires an existing admin token.
 async function createUser(req, res) {
-  const { username, email, password } = req.body;
+  const { username, email, password, role } = req.body;
 
   const existing = await User.findOne({ $or: [{ email }, { username }] });
   if (existing) {
@@ -291,7 +292,7 @@ async function createUser(req, res) {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = await User.create({ username, email, passwordHash, role: 'user', emailVerified: true });
+  const user = await User.create({ username, email, passwordHash, role, emailVerified: true });
 
   res.status(201).json({
     user: { id: user._id, username: user.username, email: user.email, role: user.role },

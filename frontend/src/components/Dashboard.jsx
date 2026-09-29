@@ -63,6 +63,7 @@ export default function Dashboard() {
         </div>
         <div className="topbar-actions">
           <span className="who">{user?.username}</span>
+          {!isAdmin && <span className="who">{user?.role === 'interior-designer' ? 'Interior Designer' : 'Homeowner / Client'}</span>}
           {isAdmin && <span className="who">Admin</span>}
           {isAdmin && <Link to="/admin" className="btn-ghost">Admin dashboard</Link>}
           <button className="btn-ghost" onClick={handleLogout}>Sign out</button>

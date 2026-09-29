@@ -140,6 +140,17 @@ input {
   font-size: 14px;
 }
 
+select {
+  width: 100%;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--panel-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.65rem 0.75rem;
+  font-size: 14px;
+}
+
 input:focus-visible,
 button:focus-visible,
 a:focus-visible {
@@ -1076,8 +1087,13 @@ a {
   color: var(--gold);
 }
 
-.role-badge.user {
+.role-badge.homeowner {
   color: var(--accent);
+}
+
+.role-badge.interior-designer {
+  border-color: var(--accent-strong);
+  color: var(--accent-strong);
 }
 
 .user-delete-button {

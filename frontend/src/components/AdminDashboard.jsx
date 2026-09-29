@@ -79,7 +79,7 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const [overview, setOverview] = useState(null);
   const [form, setForm] = useState({ username: '', email: '', password: '' });
-  const [userForm, setUserForm] = useState({ username: '', email: '', password: '' });
+  const [userForm, setUserForm] = useState({ username: '', email: '', password: '', role: 'homeowner' });
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
@@ -143,7 +143,7 @@ export default function AdminDashboard() {
     setError('');
     try {
       await api.post('/auth/users', userForm);
-      setUserForm({ username: '', email: '', password: '' });
+      setUserForm({ username: '', email: '', password: '', role: 'homeowner' });
       setUserMessage('User account created.');
       const { data } = await api.get('/auth/admin/overview');
       setOverview(data);
@@ -356,8 +356,8 @@ export default function AdminDashboard() {
                     <div className="user-row" key={account._id}>
                       <span className="user-avatar">{account.username.slice(0, 1).toUpperCase()}</span>
                       <span className="user-details"><strong>{account.username}</strong><small>{account.email}</small></span>
-                      <span className={`role-badge ${account.role}`}>{account.role}</span>
-                      {account.role === 'user' && (
+                      <span className={`role-badge ${account.role}`}>{account.role === 'interior-designer' ? 'Interior designer' : account.role}</span>
+                      {account.role !== 'admin' && (
                         <button
                           className="user-delete-button"
                           type="button"
@@ -405,6 +405,7 @@ export default function AdminDashboard() {
                 <label>Name<input value={userForm.username} onChange={(event) => setUserForm({ ...userForm, username: event.target.value })} minLength={3} required /></label>
                 <label>Email<input type="email" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} required /></label>
                 <label>Password<PasswordInput value={userForm.password} onChange={(event) => setUserForm({ ...userForm, password: event.target.value })} minLength={8} required /></label>
+                <label>Account type<select value={userForm.role} onChange={(event) => setUserForm({ ...userForm, role: event.target.value })}><option value="homeowner">Homeowner / Client</option><option value="interior-designer">Interior Designer</option></select></label>
                 <button className="btn-primary" type="submit" disabled={creatingUser}>{creatingUser ? 'Creating…' : 'Create user'}</button>
               </form>
               {userMessage && <p className="form-success">{userMessage}</p>}

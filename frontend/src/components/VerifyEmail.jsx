@@ -32,8 +32,10 @@ export default function VerifyEmail() {
         const { data } = await api.post('/auth/firebase-sync', {
           idToken: firebaseToken,
           username: sessionStorage.getItem('firebase_pending_username') || email.split('@')[0],
+          role: sessionStorage.getItem('firebase_pending_role') || 'homeowner',
         });
         sessionStorage.removeItem('firebase_pending_username');
+        sessionStorage.removeItem('firebase_pending_role');
         login(data.token, data.user);
         navigate('/');
       } else {
