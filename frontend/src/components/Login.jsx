@@ -50,10 +50,17 @@ export default function Login() {
         const username = nameWords.length === 2
           ? nameWords.join(' ')
           : `${nameWords[0] || 'User'} User`;
+        const pendingRole = localStorage.getItem('firebase_pending_role')
+          || sessionStorage.getItem('firebase_pending_role');
         const { data } = await api.post('/auth/firebase-sync', {
           idToken: firebaseToken,
           username,
+          role: pendingRole || undefined,
         });
+        localStorage.removeItem('firebase_pending_username');
+        localStorage.removeItem('firebase_pending_role');
+        sessionStorage.removeItem('firebase_pending_username');
+        sessionStorage.removeItem('firebase_pending_role');
         login(data.token, data.user);
         navigate('/');
         return;
