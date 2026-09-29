@@ -2735,6 +2735,60 @@ a {
   border-bottom: 1px solid var(--border);
 }
 
+.designer-inspector-accordion {
+  margin: 0 0 0.8rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(16, 29, 23, 0.55);
+}
+
+.designer-inspector-accordion > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.designer-inspector-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.designer-inspector-accordion > summary::after {
+  content: '⌄';
+  color: var(--accent-strong);
+  font-size: 15px;
+  transition: transform 140ms ease;
+}
+
+.designer-inspector-accordion[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.designer-inspector-accordion[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.designer-versions-accordion > summary span {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.designer-inspector-accordion > .designer-project-fields,
+.designer-inspector-accordion > .designer-version-panel {
+  margin: 0;
+  padding: 0.75rem;
+  border: 0;
+}
+
 .designer-project-fields .inspector-field {
   display: grid;
   align-items: start;

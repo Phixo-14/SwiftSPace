@@ -957,60 +957,66 @@ export default function RoomEditor() {
 
         <aside className="inspector-panel">
           {isDesigner && (
-            <section className="designer-project-fields">
-              <p className="panel-heading">Project details</p>
-              <label className="inspector-field">
-                Client name
-                <input value={clientName} maxLength={120} onChange={(event) => setClientName(event.target.value)} />
-              </label>
-              <div className="designer-measurements">
-                <label className="inspector-field">
-                  Measured width
-                  <input type="number" min="0.01" step="0.01" value={measurements.width} onChange={(event) => setMeasurements((current) => ({ ...current, width: event.target.value }))} />
-                </label>
-                <label className="inspector-field">
-                  Measured length
-                  <input type="number" min="0.01" step="0.01" value={measurements.length} onChange={(event) => setMeasurements((current) => ({ ...current, length: event.target.value }))} />
-                </label>
-                <label className="inspector-field">
-                  Unit
-                  <select value={measurements.unit} onChange={(event) => setMeasurements((current) => ({ ...current, unit: event.target.value }))}>
-                    <option value="ft">Feet</option><option value="in">Inches</option><option value="m">Meters</option><option value="cm">Centimeters</option><option value="mm">Millimeters</option>
-                  </select>
-                </label>
-              </div>
-              <label className="inspector-field">
-                Design notes
-                <textarea rows={4} maxLength={5000} value={designNotes} onChange={(event) => setDesignNotes(event.target.value)} />
-              </label>
-              {!isNew && (
-                <div className="designer-version-panel">
-                  <p className="panel-heading">Saved versions</p>
-                  <form onSubmit={handleSaveVersion}>
+            <>
+              <details className="designer-inspector-accordion" open>
+                <summary>Project details</summary>
+                <div className="designer-project-fields">
+                  <label className="inspector-field">
+                    Client name
+                    <input value={clientName} maxLength={120} onChange={(event) => setClientName(event.target.value)} />
+                  </label>
+                  <div className="designer-measurements">
                     <label className="inspector-field">
-                      Version name
-                      <input value={versionName} maxLength={60} onChange={(event) => setVersionName(event.target.value)} placeholder="e.g. Initial concept" />
+                      Measured width
+                      <input type="number" min="0.01" step="0.01" value={measurements.width} onChange={(event) => setMeasurements((current) => ({ ...current, width: event.target.value }))} />
                     </label>
-                    <button className="btn-ghost" type="submit" disabled={versionSaving}>{versionSaving ? 'Saving…' : 'Save version'}</button>
-                  </form>
-                  {versionsLoading && <p className="muted small">Loading versions…</p>}
-                  {versionError && <p className="form-error" role="alert">{versionError}</p>}
-                  {versionMessage && <p className="form-success" role="status">{versionMessage}</p>}
-                  {versions.map((version) => (
-                    <div className="designer-version-row" key={version._id}>
-                      <span><strong>{version.name}</strong><small>{new Date(version.createdAt).toLocaleString()}</small></span>
-                      <div className="designer-version-actions">
-                        <button className="btn-ghost" type="button" onClick={() => previewVersion(version)} disabled={versionSaving || versionPreviewLoadingId === version._id}>
-                          {versionPreviewLoadingId === version._id ? 'Loading…' : 'Preview'}
-                        </button>
-                        <button className="btn-ghost" type="button" onClick={() => restoreVersion(version)} disabled={versionSaving}>Restore</button>
-                      </div>
-                    </div>
-                  ))}
-                  {!versionsLoading && versions.length === 0 && <p className="muted small">No versions saved yet.</p>}
+                    <label className="inspector-field">
+                      Measured length
+                      <input type="number" min="0.01" step="0.01" value={measurements.length} onChange={(event) => setMeasurements((current) => ({ ...current, length: event.target.value }))} />
+                    </label>
+                    <label className="inspector-field">
+                      Unit
+                      <select value={measurements.unit} onChange={(event) => setMeasurements((current) => ({ ...current, unit: event.target.value }))}>
+                        <option value="ft">Feet</option><option value="in">Inches</option><option value="m">Meters</option><option value="cm">Centimeters</option><option value="mm">Millimeters</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label className="inspector-field">
+                    Design notes
+                    <textarea rows={4} maxLength={5000} value={designNotes} onChange={(event) => setDesignNotes(event.target.value)} />
+                  </label>
                 </div>
+              </details>
+              {!isNew && (
+                <details className="designer-inspector-accordion designer-versions-accordion">
+                  <summary>Saved versions <span>{versions.length}</span></summary>
+                  <div className="designer-version-panel">
+                    <form onSubmit={handleSaveVersion}>
+                      <label className="inspector-field">
+                        Version name
+                        <input value={versionName} maxLength={60} onChange={(event) => setVersionName(event.target.value)} placeholder="e.g. Initial concept" />
+                      </label>
+                      <button className="btn-ghost" type="submit" disabled={versionSaving}>{versionSaving ? 'Saving…' : 'Save version'}</button>
+                    </form>
+                    {versionsLoading && <p className="muted small">Loading versions…</p>}
+                    {versionError && <p className="form-error" role="alert">{versionError}</p>}
+                    {versionMessage && <p className="form-success" role="status">{versionMessage}</p>}
+                    {versions.map((version) => (
+                      <div className="designer-version-row" key={version._id}>
+                        <span><strong>{version.name}</strong><small>{new Date(version.createdAt).toLocaleString()}</small></span>
+                        <div className="designer-version-actions">
+                          <button className="btn-ghost" type="button" onClick={() => previewVersion(version)} disabled={versionSaving || versionPreviewLoadingId === version._id}>
+                            {versionPreviewLoadingId === version._id ? 'Loading…' : 'Preview'}
+                          </button>
+                          <button className="btn-ghost" type="button" onClick={() => restoreVersion(version)} disabled={versionSaving}>Restore</button>
+                        </div>
+                      </div>
+                    ))}
+                    {!versionsLoading && versions.length === 0 && <p className="muted small">No versions saved yet.</p>}
+                  </div>
+                </details>
               )}
-            </section>
+            </>
           )}
           <p className="panel-heading">Room</p>
           <label className="inspector-field">
