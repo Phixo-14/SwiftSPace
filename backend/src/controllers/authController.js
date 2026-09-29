@@ -204,6 +204,15 @@ async function firebaseSync(req, res) {
   res.json({ token, user: { id: user._id, username: user.username, email: user.email, role: user.role } });
 }
 
+async function deleteUserData(userIds) {
+  await Promise.all([
+    Room.deleteMany({ userId: { $in: userIds } }),
+    RoomTimer.deleteMany({ userId: { $in: userIds } }),
+    PlacementError.deleteMany({ userId: { $in: userIds } }),
+    User.deleteMany({ _id: { $in: userIds } }),
+  ]);
+}
+
 async function syncFirebaseUsersFromFirebase() {
   const firebase = getFirebaseAdmin();
   if (!firebase) {
@@ -213,9 +222,11 @@ async function syncFirebaseUsersFromFirebase() {
   let page;
   let synced = 0;
   let skipped = 0;
+  const firebaseUids = new Set();
   do {
     page = await firebase.auth().listUsers(1000, page?.pageToken);
     for (const firebaseUser of page.users) {
+      firebaseUids.add(firebaseUser.uid);
       if (!firebaseUser.email) {
         skipped += 1;
         continue;
@@ -251,7 +262,14 @@ async function syncFirebaseUsersFromFirebase() {
     }
   } while (page.pageToken);
 
-  return { synced, skipped };
+  const staleFirebaseUsers = await User.find({
+    firebaseUid: { $type: 'string', $nin: [...firebaseUids] },
+    role: { $ne: 'admin' },
+  }).select('_id');
+  const staleUserIds = staleFirebaseUsers.map((user) => user._id);
+  if (staleUserIds.length) await deleteUserData(staleUserIds);
+
+  return { synced, skipped, deleted: staleUserIds.length };
 }
 
 // POST /api/auth/admin/sync-firebase-users — imports all Firebase accounts into MongoDB.
@@ -354,12 +372,7 @@ async function deleteUser(req, res) {
     return res.status(400).json({ message: 'Admin accounts cannot be deleted as regular users.' });
   }
 
-  await Promise.all([
-    Room.deleteMany({ userId: user._id }),
-    RoomTimer.deleteMany({ userId: user._id }),
-    PlacementError.deleteMany({ userId: user._id }),
-    user.deleteOne(),
-  ]);
+  await deleteUserData([user._id]);
   res.status(204).send();
 }
 
