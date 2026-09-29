@@ -230,6 +230,29 @@ async function deleteFirebaseUser(req, res) {
   res.status(204).send();
 }
 
+async function deleteAccount(req, res) {
+  const user = await User.findById(req.user.id);
+  if (!user) return res.status(404).json({ message: 'Account not found.' });
+  if (user.role === 'admin') {
+    return res.status(403).json({ message: 'Admin accounts cannot be deleted here.' });
+  }
+
+  if (user.firebaseUid) {
+    const firebase = getFirebaseAdmin();
+    if (!firebase) {
+      return res.status(503).json({ message: 'Firebase account deletion is not configured.' });
+    }
+    try {
+      await firebase.auth().deleteUser(user.firebaseUid);
+    } catch (error) {
+      if (error.code !== 'auth/user-not-found') throw error;
+    }
+  }
+
+  await deleteUserData([user._id]);
+  res.status(204).send();
+}
+
 async function syncFirebaseUsersFromFirebase() {
   const firebase = getFirebaseAdmin();
   if (!firebase) {
@@ -461,4 +484,4 @@ async function getAdminOverview(req, res) {
   });
 }
 
-module.exports = { register, login, firebaseSync, deleteFirebaseUser, syncFirebaseUsers, syncFirebaseUsersFromFirebase, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview };
+module.exports = { register, login, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, syncFirebaseUsersFromFirebase, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview };

@@ -1491,6 +1491,26 @@ a {
   margin-bottom: 0.55rem;
 }
 
+.account-settings {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  margin-top: 1rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.account-settings h2 {
+  margin-bottom: 0.3rem;
+  font-size: 1.1rem;
+}
+
+.account-settings p:last-child {
+  margin-bottom: 0;
+}
+
 .dashboard-subtitle {
   max-width: 260px;
   margin: 0 0 0.3rem;

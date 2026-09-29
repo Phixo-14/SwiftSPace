@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { signOut } from 'firebase/auth';
 import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
+import { firebaseAuth } from '../firebase.js';
 
 export default function Dashboard() {
   const [rooms, setRooms] = useState([]);
@@ -9,6 +11,9 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [deletingRoomId, setDeletingRoomId] = useState(null);
   const [roomPendingDeletion, setRoomPendingDeletion] = useState(null);
+  const [accountDeletePending, setAccountDeletePending] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [accountDeleteError, setAccountDeleteError] = useState('');
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -52,6 +57,21 @@ export default function Dashboard() {
       setError('Could not delete that room.');
     } finally {
       setDeletingRoomId(null);
+    }
+  }
+
+  async function confirmDeleteAccount() {
+    setDeletingAccount(true);
+    setAccountDeleteError('');
+    try {
+      await api.delete('/auth/account');
+      if (firebaseAuth) await signOut(firebaseAuth).catch(() => {});
+      logout();
+      navigate('/login', { replace: true });
+    } catch (requestError) {
+      setAccountDeleteError(requestError.response?.data?.message || 'Could not delete your account.');
+    } finally {
+      setDeletingAccount(false);
     }
   }
 
@@ -122,6 +142,26 @@ export default function Dashboard() {
             </Link>
           </article>
         ))}
+
+        {!isAdmin && (
+          <section className="account-settings" aria-labelledby="account-settings-heading">
+            <div>
+              <p className="eyebrow">Account</p>
+              <h2 id="account-settings-heading">Account settings</h2>
+              <p className="muted">Permanently remove your account and all saved layouts.</p>
+            </div>
+            <button
+              className="btn-danger"
+              type="button"
+              onClick={() => {
+                setAccountDeleteError('');
+                setAccountDeletePending(true);
+              }}
+            >
+              Delete account
+            </button>
+          </section>
+        )}
       </main>
 
       {roomPendingDeletion && (
@@ -137,6 +177,26 @@ export default function Dashboard() {
               </button>
               <button className="btn-danger" type="button" onClick={confirmDelete} disabled={deletingRoomId !== null}>
                 {deletingRoomId ? 'Deleting…' : 'Delete room'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {accountDeletePending && (
+        <div className="delete-dialog-backdrop" role="presentation">
+          <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="account-delete-title">
+            <div className="delete-dialog-icon" aria-hidden="true">×</div>
+            <p className="eyebrow">Account settings</p>
+            <h2 id="account-delete-title">Delete your account?</h2>
+            <p className="muted">Your account and all saved rooms will be permanently deleted. This cannot be undone.</p>
+            {accountDeleteError && <p className="form-error" role="alert">{accountDeleteError}</p>}
+            <div className="delete-dialog-actions">
+              <button className="btn-ghost" type="button" onClick={() => setAccountDeletePending(false)} disabled={deletingAccount}>
+                Keep account
+              </button>
+              <button className="btn-danger" type="button" onClick={confirmDeleteAccount} disabled={deletingAccount}>
+                {deletingAccount ? 'Deleting…' : 'Delete account'}
               </button>
             </div>
           </section>
