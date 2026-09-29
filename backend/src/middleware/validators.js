@@ -44,7 +44,7 @@ const placedItemSchema = Joi.object({
   catalogItemId: Joi.string().hex().length(24).required(),
   gridX: Joi.number().integer().min(0).required(),
   gridY: Joi.number().integer().min(0).required(),
-  rotation: Joi.number().valid(0, 90, 180, 270).default(0),
+  rotation: Joi.number().integer().min(0).max(359).default(0),
   customColor: Joi.string()
     .pattern(/^#[0-9A-Fa-f]{6}$/)
     .allow(null)
@@ -55,7 +55,7 @@ const overlapRecordSchema = Joi.object({
   catalogItemId: Joi.string().hex().length(24).required(),
   gridX: Joi.number().integer().min(0).required(),
   gridY: Joi.number().integer().min(0).required(),
-  rotation: Joi.number().valid(0, 90, 180, 270).default(0),
+  rotation: Joi.number().integer().min(0).max(359).default(0),
   reason: Joi.string().trim().max(180).required(),
   occurredAt: Joi.date().default(() => new Date()),
 });

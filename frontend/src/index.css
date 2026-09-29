@@ -2490,6 +2490,23 @@ a {
   width: 90px;
 }
 
+.inspector-field.rotation-control {
+  display: grid;
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+
+.rotation-control > span {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+}
+
+.rotation-control input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent-strong);
+}
+
 .inspector-field input[type='color'] {
   width: 48px;
   padding: 2px;

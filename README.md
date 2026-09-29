@@ -191,8 +191,8 @@ Open that URL in your browser.
 3. On the canvas screen:
    - Click a catalog item on the left to "arm" it, then click an empty grid
      cell to place it.
-   - Click a placed item to select it — you can **rotate it 90°**, **change
-     its color**, or **remove** it from the inspector panel on the right.
+   - Click a placed item to select it — you can rotate it by 90° or choose an
+     angle from 0° to 360° in the inspector, change its color, or remove it.
    - Adjust room **width/length** in the inspector.
    - Click **Save canvas** — this calls `POST /api/rooms` (or `PUT /api/rooms/:id`
      if you're editing an existing one).

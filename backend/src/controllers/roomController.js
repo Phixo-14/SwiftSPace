@@ -55,14 +55,18 @@ async function assertItemsFitAndExist(dimensions, placedItems) {
       return `catalogItemId ${item.catalogItemId} does not exist in the catalog.`;
     }
 
-    for (let localY = 0; localY < catalogItem.footprint.width; localY += 1) {
-      for (let localX = 0; localX < catalogItem.footprint.length; localX += 1) {
-        let offsetX = localX;
-        let offsetY = localY;
-        for (let quarterTurn = 0; quarterTurn < item.rotation / 90; quarterTurn += 1) {
-          [offsetX, offsetY] = [offsetY, -offsetX];
-        }
+    const radians = (item.rotation * Math.PI) / 180;
+    const cosine = Math.abs(Math.cos(radians));
+    const sine = Math.abs(Math.sin(radians));
+    const rotatedWidth = Math.max(1, Math.ceil(
+      catalogItem.footprint.length * cosine + catalogItem.footprint.width * sine - 1e-9
+    ));
+    const rotatedLength = Math.max(1, Math.ceil(
+      catalogItem.footprint.length * sine + catalogItem.footprint.width * cosine - 1e-9
+    ));
 
+    for (let offsetY = 0; offsetY < rotatedLength; offsetY += 1) {
+      for (let offsetX = 0; offsetX < rotatedWidth; offsetX += 1) {
         const x = item.gridX + offsetX;
         const y = item.gridY + offsetY;
         if (x < 0 || y < 0 || x >= dimensions.width || y >= dimensions.length) {

@@ -5,7 +5,7 @@ const PlacedItemSchema = new mongoose.Schema(
     catalogItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'CatalogItem', required: true },
     gridX: { type: Number, required: true, min: 0 },
     gridY: { type: Number, required: true, min: 0 },
-    rotation: { type: Number, required: true, enum: [0, 90, 180, 270], default: 0 },
+    rotation: { type: Number, required: true, min: 0, max: 359, default: 0 },
     customColor: { type: String, default: null },
   },
   { _id: false }

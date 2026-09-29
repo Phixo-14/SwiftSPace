@@ -60,6 +60,7 @@ export default function RoomEditor() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [selectedKey, setSelectedKey] = useState(null); // "x,y" of a placed item
+  const [rotationDraft, setRotationDraft] = useState(null);
   const [hoverCell, setHoverCell] = useState(null);
   const [draggedItem, setDraggedItem] = useState(null);
   const [zoom, setZoom] = useState(1);
@@ -258,32 +259,27 @@ export default function RoomEditor() {
     (category) => category.value === selectedCategory
   );
 
+  useEffect(() => {
+    setRotationDraft(null);
+  }, [selectedKey]);
+
   function getOccupiedCells(item, rotation = item.rotation) {
     const catalogItem = catalogById.get(item.catalogItemId);
     if (!catalogItem) return [{ x: 0, y: 0 }];
 
-    const rawCells = [];
-    let minRotatedX = 0;
-    let minRotatedY = 0;
+    const radians = (rotation * Math.PI) / 180;
+    const cosine = Math.abs(Math.cos(radians));
+    const sine = Math.abs(Math.sin(radians));
+    const boundsWidth = Math.max(1, Math.ceil(
+      catalogItem.footprint.length * cosine + catalogItem.footprint.width * sine - 1e-9
+    ));
+    const boundsLength = Math.max(1, Math.ceil(
+      catalogItem.footprint.length * sine + catalogItem.footprint.width * cosine - 1e-9
+    ));
 
-    for (let y = 0; y < catalogItem.footprint.width; y += 1) {
-      for (let x = 0; x < catalogItem.footprint.length; x += 1) {
-        let rotatedX = x;
-        let rotatedY = y;
-        for (let quarterTurn = 0; quarterTurn < rotation / 90; quarterTurn += 1) {
-          [rotatedX, rotatedY] = [rotatedY, -rotatedX];
-        }
-
-        if (rotatedX < minRotatedX) minRotatedX = rotatedX;
-        if (rotatedY < minRotatedY) minRotatedY = rotatedY;
-
-        rawCells.push({ x: rotatedX, y: rotatedY });
-      }
-    }
-
-    return rawCells.map(cell => ({
-      x: cell.x - minRotatedX,
-      y: cell.y - minRotatedY
+    return Array.from({ length: boundsWidth * boundsLength }, (_, index) => ({
+      x: index % boundsWidth,
+      y: Math.floor(index / boundsWidth),
     }));
   }
 
@@ -427,6 +423,7 @@ export default function RoomEditor() {
 
   function setItemRotation(nextRotation) {
     if (!selectedItem) return;
+    nextRotation = ((Number(nextRotation) % 360) + 360) % 360;
     if (selectedItem.rotation === nextRotation) return;
 
     const isClear = getOccupiedCells(selectedItem, nextRotation).every(({ x, y }) => {
@@ -457,7 +454,15 @@ export default function RoomEditor() {
 
   function rotateSelected() {
     if (!selectedItem) return;
+    setRotationDraft(null);
     setItemRotation((selectedItem.rotation + 90) % 360);
+  }
+
+  function commitRotationDraft() {
+    if (rotationDraft === null) return;
+    const nextRotation = rotationDraft;
+    setRotationDraft(null);
+    setItemRotation(nextRotation);
   }
 
   function moveItem(itemToMove, gridX, gridY) {
@@ -869,10 +874,11 @@ export default function RoomEditor() {
               {placedItems.map((item) => {
                 const catalogItem = catalogById.get(item.catalogItemId);
                 if (!catalogItem) return null;
-                const occupiedCells = getOccupiedCells(item);
-                const bounds = getOccupiedBounds(occupiedCells);
                 const isSelected = selectedKey === `${item.gridX},${item.gridY}`
                   || itemsByCell.get(selectedKey) === item;
+                const displayRotation = isSelected && rotationDraft !== null ? rotationDraft : item.rotation;
+                const occupiedCells = getOccupiedCells(item, displayRotation);
+                const bounds = getOccupiedBounds(occupiedCells);
                 return (
                   <button
                     className={`placed-item ${isSelected ? 'selected' : ''}`}
@@ -882,7 +888,7 @@ export default function RoomEditor() {
                     onDragStart={(event) => handleFurnitureDragStart(event, item)}
                     style={{
                       '--item-color': item.customColor || catalogItem.defaultColor,
-                      '--item-rotation': `${item.rotation}deg`,
+                      '--item-rotation': `${displayRotation}deg`,
                       left: `${(item.gridX + bounds.minX) * 43 + 1}px`,
                       top: `${(item.gridY + bounds.minY) * 43 + 1}px`,
                       width: `${bounds.width * 42 + (bounds.width - 1)}px`,
@@ -899,7 +905,7 @@ export default function RoomEditor() {
                       <ItemGlyph
                         iconKey={catalogItem.iconKey}
                         color={item.customColor || catalogItem.defaultColor}
-                        rotation={item.rotation}
+                        rotation={displayRotation}
                         isometric
                       />
                     </span>
@@ -1081,6 +1087,20 @@ export default function RoomEditor() {
                 </button>
                 <button className="btn-ghost danger" onClick={removeSelected}>Remove</button>
               </div>
+              <label className="inspector-field rotation-control">
+                <span>Furniture angle <strong>{rotationDraft ?? selectedItem.rotation}°</strong></span>
+                <input
+                  type="range"
+                  min={0}
+                  max={360}
+                  step={1}
+                  value={rotationDraft ?? selectedItem.rotation}
+                  aria-label="Furniture angle from 0 to 360 degrees"
+                  onChange={(event) => setRotationDraft(Number(event.target.value))}
+                  onPointerUp={commitRotationDraft}
+                  onKeyUp={commitRotationDraft}
+                />
+              </label>
               <label className="inspector-field">
                 Color
                 <input
