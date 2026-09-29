@@ -905,7 +905,6 @@ export default function RoomEditor() {
                       iconKey={previewItem.catalogItem.iconKey}
                       color={previewItem.catalogItem.defaultColor}
                       rotation={0}
-                      isometric
                     />
                   </span>
                 </div>
@@ -945,7 +944,6 @@ export default function RoomEditor() {
                         iconKey={catalogItem.iconKey}
                         color={item.customColor || catalogItem.defaultColor}
                         rotation={displayRotation}
-                        isometric
                       />
                     </span>
                   </button>
@@ -1223,7 +1221,7 @@ export default function RoomEditor() {
                         '--item-color': item.customColor || catalogItem.defaultColor,
                       }}
                     >
-                      <ItemGlyph iconKey={catalogItem.iconKey} color={item.customColor || catalogItem.defaultColor} rotation={item.rotation} isometric />
+                      <ItemGlyph iconKey={catalogItem.iconKey} color={item.customColor || catalogItem.defaultColor} rotation={item.rotation} />
                     </div>
                   );
                 })}

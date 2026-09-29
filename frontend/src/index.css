@@ -2441,8 +2441,6 @@ a {
   gap: 1px;
   padding: 1px;
   background: var(--grid-color, #8c7455);
-  transform: rotateZ(45deg);
-  transform-origin: center;
 }
 
 .grid-cell {
