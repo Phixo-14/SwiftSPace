@@ -16,6 +16,7 @@ const authRoutes = require('./src/routes/authRoutes');
 const catalogRoutes = require('./src/routes/catalogRoutes');
 const roomRoutes = require('./src/routes/roomRoutes');
 const { requireAuth, requireAdmin } = require('./src/middleware/auth');
+const { systemLoggingMiddleware, writeSystemLog } = require('./src/middleware/systemLogging');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -35,6 +36,7 @@ app.use((req, res, next) => {
 app.use(cors({ origin: allowedOrigin }));
 app.use(express.json({ limit: '100kb' }));
 app.use(morgan('dev'));
+app.use('/api', systemLoggingMiddleware);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -101,7 +103,10 @@ connectDB()
   .then(async () => {
     await ensureAdminAccount();
     await ensureCatalog();
-    app.listen(PORT, () => console.log(`Room Designer API listening on port ${PORT}`));
+    app.listen(PORT, () => {
+      console.log(`Room Designer API listening on port ${PORT}`);
+      void writeSystemLog({ level: 'info', source: 'system', message: 'API server started.' });
+    });
     const firebaseAdminConfigured = Boolean(getFirebaseAdmin());
     if (!firebaseAdminConfigured) {
       console.warn('Firebase synchronization disabled: Firebase Admin credentials are not configured.');

@@ -1,5 +1,6 @@
 const express = require('express');
 const { register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview } = require('../controllers/authController');
+const { getSystemLogs } = require('../controllers/systemLogController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { validateBody, registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema } = require('../middleware/validators');
 const { loginLimiter } = require('../middleware/rateLimiters');
@@ -20,5 +21,6 @@ router.post('/admins', requireAuth, requireAdmin, validateBody(adminSchema), cre
 router.post('/users', requireAuth, requireAdmin, validateBody(registerSchema), createUser);
 router.delete('/users/:id', requireAuth, requireAdmin, deleteUser);
 router.get('/admin/overview', requireAuth, requireAdmin, getAdminOverview);
+router.get('/admin/logs', requireAuth, requireAdmin, getSystemLogs);
 
 module.exports = router;

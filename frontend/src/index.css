@@ -1281,6 +1281,123 @@ a {
   font-family: var(--font-mono);
 }
 
+.system-logs-section {
+  max-height: none;
+}
+
+.system-logs-heading {
+  align-items: flex-start;
+}
+
+.system-logs-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.system-logs-note {
+  margin: -0.35rem 0 0.8rem;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.system-log-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.system-log-filters button {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.system-log-filters button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.system-log-table {
+  min-width: 0;
+  max-height: 430px;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+}
+
+.system-log-row {
+  display: grid;
+  grid-template-columns: 148px 72px minmax(240px, 1fr) 64px 78px;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 680px;
+  padding: 0.6rem 0.5rem;
+  border-bottom: 1px solid rgba(65, 109, 91, 0.3);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.system-log-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-raised);
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.system-log-row time,
+.system-log-status,
+.system-log-duration {
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.system-log-row code {
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.system-log-level {
+  width: fit-content;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.system-log-level.info {
+  color: var(--accent-strong);
+}
+
+.system-log-level.warn {
+  border-color: rgba(212, 195, 138, 0.5);
+  color: var(--gold);
+}
+
+.system-log-level.error {
+  border-color: rgba(217, 122, 109, 0.55);
+  color: var(--danger);
+}
+
+.system-log-row.error {
+  background: rgba(92, 39, 35, 0.12);
+}
+
 .user-list,
 .room-list {
   display: grid;

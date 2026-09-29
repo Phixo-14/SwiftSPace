@@ -88,6 +88,11 @@ export default function AdminDashboard() {
   const [userMessage, setUserMessage] = useState('');
   const [error, setError] = useState('');
   const [expandedOverlapUser, setExpandedOverlapUser] = useState(null);
+  const [systemLogs, setSystemLogs] = useState([]);
+  const [systemLogsLoading, setSystemLogsLoading] = useState(true);
+  const [systemLogsError, setSystemLogsError] = useState('');
+  const [systemLogLevel, setSystemLogLevel] = useState('all');
+  const [systemLogRefreshKey, setSystemLogRefreshKey] = useState(0);
 
   function formatTimer(seconds = 0) {
     const hours = Math.floor(seconds / 3600).toString().padStart(2, '0');
@@ -111,6 +116,27 @@ export default function AdminDashboard() {
       })
       .finally(() => setLoading(false));
   }, [logout, navigate]);
+
+  useEffect(() => {
+    let active = true;
+    setSystemLogsLoading(systemLogs.length === 0);
+    api.get('/auth/admin/logs', { params: { limit: 200 } })
+      .then(({ data }) => {
+        if (active) {
+          setSystemLogs(data.logs);
+          setSystemLogsError('');
+        }
+      })
+      .catch((requestError) => {
+        if (active) setSystemLogsError(requestError.response?.data?.message || 'Could not load system logs.');
+      })
+      .finally(() => {
+        if (active) setSystemLogsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [systemLogRefreshKey]);
 
   function handleLogout() {
     logout();
@@ -188,6 +214,9 @@ export default function AdminDashboard() {
   });
   const prediction = overview ? getPredictiveAnalysis(overview) : null;
   const inference = overview ? getInferentialAnalysis(overview) : null;
+  const filteredSystemLogs = systemLogLevel === 'all'
+    ? systemLogs
+    : systemLogs.filter((log) => log.level === systemLogLevel);
 
   return (
     <div className="page admin-page">
@@ -203,6 +232,7 @@ export default function AdminDashboard() {
           <a href="#admin-inference"><span className="admin-nav-icon">∴</span><span className="admin-sidebar-label">Inference</span></a>
           <a href="#admin-users"><span className="admin-nav-icon">◎</span><span className="admin-sidebar-label">Users</span></a>
           <a href="#admin-overlaps"><span className="admin-nav-icon">!</span><span className="admin-sidebar-label">Overlap activity</span></a>
+          <a href="#admin-logs"><span className="admin-nav-icon">≡</span><span className="admin-sidebar-label">System logs</span></a>
           <a href="#admin-access"><span className="admin-nav-icon">+</span><span className="admin-sidebar-label">Add administrator</span></a>
         </nav>
       </aside>
@@ -345,6 +375,56 @@ export default function AdminDashboard() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </section>
+
+            <section className="admin-section system-logs-section" id="admin-logs">
+              <div className="section-heading system-logs-heading">
+                <div><p className="eyebrow">Operations</p><h3>System logs</h3></div>
+                <div className="system-logs-actions">
+                  <span className="section-count">{systemLogs.length} recent</span>
+                  <button className="btn-ghost" type="button" onClick={() => setSystemLogRefreshKey((key) => key + 1)} disabled={systemLogsLoading}>
+                    {systemLogsLoading ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                </div>
+              </div>
+              <p className="system-logs-note">API requests and failures. Entries expire after 30 days.</p>
+              <div className="system-log-filters" role="group" aria-label="Filter system logs by severity">
+                {[
+                  { value: 'all', label: 'All' },
+                  { value: 'error', label: 'Errors' },
+                  { value: 'warn', label: 'Warnings' },
+                  { value: 'info', label: 'Info' },
+                ].map((filter) => (
+                  <button key={filter.value} type="button" aria-pressed={systemLogLevel === filter.value} onClick={() => setSystemLogLevel(filter.value)}>
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+              {systemLogsError && <p className="form-error" role="alert">{systemLogsError}</p>}
+              {systemLogsLoading && systemLogs.length === 0 ? (
+                <p className="muted">Loading system logs…</p>
+              ) : filteredSystemLogs.length === 0 ? (
+                <p className="muted">{systemLogs.length ? 'No logs match this filter.' : 'No system logs recorded yet.'}</p>
+              ) : (
+                <div className="system-log-table" role="table" aria-label="Recent system logs">
+                  <div className="system-log-row system-log-header" role="row">
+                    <span role="columnheader">Time</span>
+                    <span role="columnheader">Level</span>
+                    <span role="columnheader">Request</span>
+                    <span role="columnheader">Status</span>
+                    <span role="columnheader">Duration</span>
+                  </div>
+                  {filteredSystemLogs.map((log) => (
+                    <div className={`system-log-row ${log.level}`} role="row" key={log._id}>
+                      <time role="cell" dateTime={log.createdAt} title={new Date(log.createdAt).toLocaleString()}>{new Date(log.createdAt).toLocaleString()}</time>
+                      <span className={`system-log-level ${log.level}`} role="cell">{log.level}</span>
+                      <code role="cell" title={log.message}>{log.source === 'request' ? `${log.method} ${log.route}` : log.message}</code>
+                      <span className="system-log-status" role="cell">{log.statusCode ?? '—'}</span>
+                      <span className="system-log-duration" role="cell">{log.durationMs === null ? '—' : `${log.durationMs} ms`}</span>
+                    </div>
+                  ))}
                 </div>
               )}
             </section>
