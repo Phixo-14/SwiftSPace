@@ -30,6 +30,10 @@ const firebaseSyncSchema = Joi.object({
   role: Joi.string().valid('homeowner', 'interior-designer').default('homeowner'),
 });
 
+const firebaseDeleteSchema = Joi.object({
+  uid: Joi.string().trim().min(1).max(128).required(),
+});
+
 const adminSchema = registerSchema.keys({ role: Joi.forbidden() });
 
 const placedItemSchema = Joi.object({
@@ -82,4 +86,4 @@ function validateBody(schema) {
   };
 }
 
-module.exports = { registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, adminSchema, roomSchema, validateBody };
+module.exports = { registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, firebaseDeleteSchema, adminSchema, roomSchema, validateBody };

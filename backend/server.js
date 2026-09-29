@@ -41,6 +41,7 @@ const authLimiter = rateLimit({
   limit: 20,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  skip: (req) => req.path === '/firebase-user-deleted',
   message: { message: 'Too many authentication attempts. Try again later.' },
 });
 

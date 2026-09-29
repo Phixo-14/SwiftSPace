@@ -26,6 +26,8 @@ services:
         sync: false
       - key: FIREBASE_PRIVATE_KEY
         sync: false
+      - key: AUTH_DELETE_WEBHOOK_SECRET
+        sync: false
       - key: ADMIN_USERNAME
         sync: false
       - key: ADMIN_EMAIL

@@ -213,6 +213,23 @@ async function deleteUserData(userIds) {
   ]);
 }
 
+async function deleteFirebaseUser(req, res) {
+  const configuredSecret = process.env.AUTH_DELETE_WEBHOOK_SECRET;
+  if (!configuredSecret) {
+    return res.status(503).json({ message: 'Firebase deletion webhook is not configured.' });
+  }
+
+  const expected = Buffer.from(configuredSecret);
+  const received = Buffer.from(req.get('x-firebase-delete-secret') || '');
+  if (expected.length !== received.length || !crypto.timingSafeEqual(expected, received)) {
+    return res.status(401).json({ message: 'Invalid Firebase deletion webhook secret.' });
+  }
+
+  const user = await User.findOne({ firebaseUid: req.body.uid, role: { $ne: 'admin' } }).select('_id');
+  if (user) await deleteUserData([user._id]);
+  res.status(204).send();
+}
+
 async function syncFirebaseUsersFromFirebase() {
   const firebase = getFirebaseAdmin();
   if (!firebase) {
@@ -444,4 +461,4 @@ async function getAdminOverview(req, res) {
   });
 }
 
-module.exports = { register, login, firebaseSync, syncFirebaseUsers, syncFirebaseUsersFromFirebase, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview };
+module.exports = { register, login, firebaseSync, deleteFirebaseUser, syncFirebaseUsers, syncFirebaseUsersFromFirebase, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview };
