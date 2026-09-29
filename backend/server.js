@@ -15,6 +15,7 @@ const { ensureCatalog } = require('./src/seed/seedCatalog');
 const authRoutes = require('./src/routes/authRoutes');
 const catalogRoutes = require('./src/routes/catalogRoutes');
 const roomRoutes = require('./src/routes/roomRoutes');
+const sharedRoomRoutes = require('./src/routes/sharedRoomRoutes');
 const { requireAuth, requireAdmin } = require('./src/middleware/auth');
 
 const app = express();
@@ -50,6 +51,7 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/rooms', roomRoutes);
+app.use('/api/shared-rooms', sharedRoomRoutes);
 app.get('/api/admin/health', requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true, role: req.user.role, user: req.user.username });
 });

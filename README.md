@@ -201,6 +201,9 @@ Open that URL in your browser.
    not the full item array).
 5. Click the room again to reopen it via `GET /api/rooms/:id`, which loads
    the full document including `placedItems`.
+6. Click **Share layout** on a saved room to create a read-only link. Copy it
+  for a client, and revoke it from the same dialog whenever access should end.
+  Shared layouts open at `/share/:token` without requiring an account.
 
 ---
 
@@ -211,6 +214,7 @@ Open that URL in your browser.
 | `POST /api/auth/register`, login | `backend/src/routes/authRoutes.js`, `authController.js` — bcrypt-hashed password, JWT issued on success |
 | `GET /api/catalog/items` | `catalogRoutes.js` / `catalogController.js` |
 | `GET /api/rooms`, `POST /api/rooms`, `PUT /api/rooms/:id` | `roomRoutes.js` / `roomController.js` |
+| `POST /api/rooms/:id/share`, `DELETE /api/rooms/:id/share`, `GET /api/shared-rooms/:token` | Owner-controlled share links and public read-only room access |
 | MVC structure | `models/`, `controllers/`, `routes/` folders |
 | Nested JSON document / embedding | `models/Room.js` — `placedItems` is an embedded array, matching your sample document |
 | JWT auth + ownership check | `middleware/auth.js` (verifies token) + `roomController.js` (checks `room.userId === req.user.id` on every read/update/delete) |
@@ -223,8 +227,8 @@ A few things worth knowing about this prototype vs. a production build:
 - The frontend's "isometric" look is a CSS transform on a 2D grid (a common,
   lightweight trick) rather than a WebGL/canvas renderer — good enough to
   demonstrate the interaction model, easy to swap out later.
-- There's no `DELETE` button wired up in the UI yet, even though the
-  endpoint exists in the backend — worth adding to the Dashboard next.
+- Shared links expose only the saved room layout and furniture catalog details;
+  they do not grant editing access and can be revoked by the room owner.
 - For a class demo this runs fine locally; for anything public-facing you'd
   want rate limiting on `/api/auth`, HTTPS, and to move `JWT_SECRET` into a
   real secrets manager.

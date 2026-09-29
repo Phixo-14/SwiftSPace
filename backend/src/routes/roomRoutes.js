@@ -7,6 +7,8 @@ const {
   createRoom,
   updateRoom,
   deleteRoom,
+  createShareLink,
+  revokeShareLink,
 } = require('../controllers/roomController');
 
 const router = express.Router();
@@ -19,5 +21,7 @@ router.get('/:id', getRoomById);
 router.post('/', validateBody(roomSchema), createRoom);
 router.put('/:id', validateBody(roomSchema), updateRoom);
 router.delete('/:id', deleteRoom);
+router.post('/:id/share', createShareLink);
+router.delete('/:id/share', revokeShareLink);
 
 module.exports = router;

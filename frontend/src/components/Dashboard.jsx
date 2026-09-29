@@ -14,6 +14,13 @@ export default function Dashboard() {
   const [accountDeletePending, setAccountDeletePending] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [accountDeleteError, setAccountDeleteError] = useState('');
+  const [shareTarget, setShareTarget] = useState(null);
+  const [shareUrl, setShareUrl] = useState('');
+  const [shareError, setShareError] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareRevoking, setShareRevoking] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -72,6 +79,49 @@ export default function Dashboard() {
       setAccountDeleteError(requestError.response?.data?.message || 'Could not delete your account.');
     } finally {
       setDeletingAccount(false);
+    }
+  }
+
+  async function openShare(room) {
+    setShareTarget(room);
+    setShareUrl('');
+    setShareError('');
+    setShareMessage('');
+    setShareCopied(false);
+    setShareLoading(true);
+    try {
+      const { data } = await api.post(`/rooms/${room._id}/share`);
+      setShareUrl(`${window.location.origin}/share/${data.token}`);
+    } catch (requestError) {
+      setShareError(requestError.response?.data?.message || 'Could not create a share link.');
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function revokeShare() {
+    if (!shareTarget) return;
+    setShareRevoking(true);
+    setShareError('');
+    setShareMessage('');
+    try {
+      await api.delete(`/rooms/${shareTarget._id}/share`);
+      setShareUrl('');
+      setShareMessage('This share link has been revoked.');
+    } catch (requestError) {
+      setShareError(requestError.response?.data?.message || 'Could not revoke the share link.');
+    } finally {
+      setShareRevoking(false);
+    }
+  }
+
+  async function copyShareLink() {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareCopied(true);
+      setShareMessage('Link copied to clipboard.');
+    } catch {
+      setShareError('Could not copy the link. Select and copy it manually.');
     }
   }
 
@@ -140,6 +190,9 @@ export default function Dashboard() {
               </p>
               <p className="room-meta">Updated {new Date(room.updatedAt).toLocaleDateString()}</p>
             </Link>
+            <button className="btn-ghost room-share-button" type="button" onClick={() => openShare(room)}>
+              Share layout
+            </button>
           </article>
         ))}
 
@@ -198,6 +251,29 @@ export default function Dashboard() {
               <button className="btn-danger" type="button" onClick={confirmDeleteAccount} disabled={deletingAccount}>
                 {deletingAccount ? 'Deleting…' : 'Delete account'}
               </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {shareTarget && (
+        <div className="delete-dialog-backdrop" role="presentation">
+          <section className="share-dialog" role="dialog" aria-modal="true" aria-labelledby="share-dialog-title">
+            <p className="eyebrow">Read-only link</p>
+            <h2 id="share-dialog-title">Share {shareTarget.roomName}</h2>
+            <p className="muted">Anyone with this link can view the current room layout. You can revoke it at any time.</p>
+            {shareLoading && <p className="muted">Preparing share link…</p>}
+            {shareError && <p className="form-error" role="alert">{shareError}</p>}
+            {shareMessage && <p className="form-success" role="status">{shareMessage}</p>}
+            {shareUrl && (
+              <div className="share-link-control">
+                <input aria-label="Read-only share link" readOnly value={shareUrl} onFocus={(event) => event.target.select()} />
+                <button className="btn-primary" type="button" onClick={copyShareLink}>{shareCopied ? 'Copied' : 'Copy link'}</button>
+              </div>
+            )}
+            <div className="delete-dialog-actions">
+              {shareUrl && <button className="btn-ghost danger" type="button" onClick={revokeShare} disabled={shareRevoking}>{shareRevoking ? 'Revoking…' : 'Revoke link'}</button>}
+              <button className="btn-ghost" type="button" onClick={() => setShareTarget(null)} disabled={shareLoading || shareRevoking}>Close</button>
             </div>
           </section>
         </div>

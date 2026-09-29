@@ -15,6 +15,7 @@ const RoomSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     roomName: { type: String, required: true, trim: true, maxlength: 60 },
+    shareToken: { type: String, unique: true, sparse: true },
     dimensions: {
       width: { type: Number, required: true, min: 1, max: 50 },
       length: { type: Number, required: true, min: 1, max: 50 },

@@ -2,6 +2,7 @@ const Room = require('../models/Room');
 const CatalogItem = require('../models/CatalogItem');
 const RoomTimer = require('../models/RoomTimer');
 const PlacementError = require('../models/PlacementError');
+const crypto = require('crypto');
 
 async function getRoomExtras(roomId) {
   const [timer, placementErrors] = await Promise.all([
@@ -165,4 +166,43 @@ async function deleteRoom(req, res) {
   res.status(204).send();
 }
 
-module.exports = { getRooms, getRoomById, createRoom, updateRoom, deleteRoom };
+async function createShareLink(req, res) {
+  const room = await Room.findById(req.params.id);
+  if (!room) return res.status(404).json({ message: 'Room not found.' });
+  if (room.userId.toString() !== req.user.id) {
+    return res.status(403).json({ message: 'You do not have access to this room.' });
+  }
+
+  if (!room.shareToken) {
+    room.shareToken = crypto.randomBytes(32).toString('hex');
+    await room.save();
+  }
+  res.json({ token: room.shareToken });
+}
+
+async function revokeShareLink(req, res) {
+  const room = await Room.findById(req.params.id);
+  if (!room) return res.status(404).json({ message: 'Room not found.' });
+  if (room.userId.toString() !== req.user.id) {
+    return res.status(403).json({ message: 'You do not have access to this room.' });
+  }
+
+  if (room.shareToken) {
+    room.shareToken = undefined;
+    await room.save();
+  }
+  res.status(204).send();
+}
+
+async function getSharedRoom(req, res) {
+  if (!/^[a-f0-9]{64}$/.test(req.params.token)) {
+    return res.status(404).json({ message: 'Shared room not found or link revoked.' });
+  }
+  const room = await Room.findOne({ shareToken: req.params.token })
+    .select('roomName dimensions floorColor gridColor placedItems')
+    .populate('placedItems.catalogItemId', 'name category footprint iconKey defaultColor');
+  if (!room) return res.status(404).json({ message: 'Shared room not found or link revoked.' });
+  res.json(room);
+}
+
+module.exports = { getRooms, getRoomById, createRoom, updateRoom, deleteRoom, createShareLink, revokeShareLink, getSharedRoom };

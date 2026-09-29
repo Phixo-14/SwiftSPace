@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard.jsx';
 import RoomEditor from './components/RoomEditor.jsx';
 import AdminDashboard from './components/AdminDashboard.jsx';
 import VerifyEmail from './components/VerifyEmail.jsx';
+import SharedRoom from './components/SharedRoom.jsx';
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth();
@@ -27,6 +28,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route path="/share/:token" element={<SharedRoom />} />
       <Route
         path="/"
         element={
