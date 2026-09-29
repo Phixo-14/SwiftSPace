@@ -34,6 +34,10 @@ const firebaseDeleteSchema = Joi.object({
   uid: Joi.string().trim().min(1).max(128).required(),
 });
 
+const accountDeleteSchema = Joi.object({
+  idToken: Joi.string().optional(),
+}).default({});
+
 const adminSchema = registerSchema.keys({ role: Joi.forbidden() });
 
 const placedItemSchema = Joi.object({
@@ -97,4 +101,4 @@ function validateBody(schema) {
   };
 }
 
-module.exports = { registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, firebaseDeleteSchema, adminSchema, roomSchema, roomVersionSchema, validateBody };
+module.exports = { registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, roomSchema, roomVersionSchema, validateBody };

@@ -1,7 +1,7 @@
 const express = require('express');
 const { register, login, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview } = require('../controllers/authController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { validateBody, registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, firebaseDeleteSchema, adminSchema } = require('../middleware/validators');
+const { validateBody, registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema } = require('../middleware/validators');
 const { loginLimiter } = require('../middleware/rateLimiters');
 
 const router = express.Router();
@@ -10,7 +10,7 @@ router.post('/register', validateBody(registerSchema), register);
 router.post('/login', loginLimiter, validateBody(loginSchema), login);
 router.post('/firebase-sync', validateBody(firebaseSyncSchema), firebaseSync);
 router.post('/firebase-user-deleted', validateBody(firebaseDeleteSchema), deleteFirebaseUser);
-router.delete('/account', requireAuth, deleteAccount);
+router.delete('/account', requireAuth, validateBody(accountDeleteSchema), deleteAccount);
 router.post('/admin/sync-firebase-users', requireAuth, requireAdmin, syncFirebaseUsers);
 router.post('/verify-email', validateBody(verificationSchema), verifyEmail);
 router.post('/resend-verification', validateBody(emailSchema), resendVerification);

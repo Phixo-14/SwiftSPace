@@ -16,7 +16,10 @@ export default function AccountSettings() {
     setDeleting(true);
     setError('');
     try {
-      await api.delete('/auth/account');
+      const idToken = firebaseAuth?.currentUser
+        ? await firebaseAuth.currentUser.getIdToken(true)
+        : undefined;
+      await api.delete('/auth/account', { data: idToken ? { idToken } : {} });
       if (firebaseAuth) await signOut(firebaseAuth).catch(() => {});
       logout();
       navigate('/login', { replace: true });
