@@ -5,6 +5,7 @@ const nodemailer = require('nodemailer');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Room = require('../models/Room');
+const ProjectFolder = require('../models/ProjectFolder');
 const RoomVersion = require('../models/RoomVersion');
 const FurnitureRotationAdjustment = require('../models/FurnitureRotationAdjustment');
 const CatalogItem = require('../models/CatalogItem');
@@ -233,6 +234,7 @@ async function deleteUserData(userIds) {
     FurnitureRotationAdjustment.deleteMany({ userId: { $in: userIds } }),
     RoomTimer.deleteMany({ userId: { $in: userIds } }),
     PlacementError.deleteMany({ userId: { $in: userIds } }),
+    ProjectFolder.deleteMany({ userId: { $in: userIds } }),
     User.deleteMany({ _id: { $in: userIds } }),
   ]);
 }

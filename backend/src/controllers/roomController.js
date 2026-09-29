@@ -89,7 +89,7 @@ async function assertItemsFitAndExist(dimensions, placedItems) {
 // array never crosses the wire just to render a list of room names/dates.
 async function getRooms(req, res) {
   const rooms = await Room.find({ userId: req.user.id })
-    .select('roomName clientName measurements dimensions createdAt updatedAt')
+    .select('roomName clientName measurements dimensions folderId createdAt updatedAt')
     .sort({ updatedAt: -1 });
 
   const roomIds = rooms.map((room) => room._id);
@@ -228,6 +228,7 @@ async function duplicateRoom(req, res) {
 
   const duplicate = await Room.create({
     userId: req.user.id,
+    folderId: source.folderId,
     roomName: `${source.roomName} (Copy)`.slice(0, 60),
     clientName: source.clientName,
     measurements: source.measurements,

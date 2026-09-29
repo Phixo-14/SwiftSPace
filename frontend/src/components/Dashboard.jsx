@@ -5,6 +5,13 @@ import { useAuth } from '../AuthContext.jsx';
 
 export default function Dashboard() {
   const [rooms, setRooms] = useState([]);
+  const [folders, setFolders] = useState([]);
+  const [activeFolderId, setActiveFolderId] = useState('all');
+  const [folderMode, setFolderMode] = useState('');
+  const [folderName, setFolderName] = useState('');
+  const [folderSubmitting, setFolderSubmitting] = useState(false);
+  const [folderPendingDeletion, setFolderPendingDeletion] = useState(null);
+  const [movingRoomId, setMovingRoomId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingRoomId, setDeletingRoomId] = useState(null);
@@ -23,10 +30,13 @@ export default function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .get('/rooms')
-      .then(({ data }) => {
-        if (!cancelled) setRooms(data);
+    setLoading(true);
+    const requests = [api.get('/rooms'), isDesigner ? api.get('/rooms/folders') : Promise.resolve({ data: [] })];
+    Promise.all(requests)
+      .then(([roomsResponse, foldersResponse]) => {
+        if (cancelled) return;
+        setRooms(roomsResponse.data);
+        setFolders(foldersResponse.data);
       })
       .catch(() => {
         if (!cancelled) setError('Could not load your rooms.');
@@ -37,7 +47,79 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isDesigner]);
+
+  const visibleRooms = rooms.filter((room) => {
+    if (!isDesigner || activeFolderId === 'all') return true;
+    if (activeFolderId === 'unfiled') return !room.folderId;
+    return String(room.folderId) === activeFolderId;
+  });
+  const selectedFolder = folders.find(({ _id }) => _id === activeFolderId);
+
+  function startFolderCreate() {
+    setFolderName('');
+    setFolderMode('create');
+  }
+
+  function startFolderRename() {
+    if (!selectedFolder) return;
+    setFolderName(selectedFolder.name);
+    setFolderMode('rename');
+  }
+
+  async function saveFolder(event) {
+    event.preventDefault();
+    const name = folderName.trim();
+    if (!name) return;
+    setFolderSubmitting(true);
+    setError('');
+    try {
+      if (folderMode === 'rename' && selectedFolder) {
+        const { data } = await api.patch(`/rooms/folders/${selectedFolder._id}`, { name });
+        setFolders((current) => current.map((folder) => folder._id === data._id ? data : folder));
+      } else {
+        const { data } = await api.post('/rooms/folders', { name });
+        setFolders((current) => [...current, data].sort((left, right) => left.name.localeCompare(right.name)));
+        setActiveFolderId(data._id);
+      }
+      setFolderMode('');
+      setFolderName('');
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Could not save the folder.');
+    } finally {
+      setFolderSubmitting(false);
+    }
+  }
+
+  async function moveRoom(room, folderId) {
+    setMovingRoomId(room._id);
+    setError('');
+    try {
+      const { data } = await api.patch(`/rooms/${room._id}/folder`, { folderId: folderId || null });
+      setRooms((current) => current.map((item) => item._id === room._id ? { ...item, folderId: data.folderId } : item));
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Could not move this project.');
+    } finally {
+      setMovingRoomId(null);
+    }
+  }
+
+  async function confirmDeleteFolder() {
+    if (!folderPendingDeletion) return;
+    setFolderSubmitting(true);
+    setError('');
+    try {
+      await api.delete(`/rooms/folders/${folderPendingDeletion._id}`);
+      setFolders((current) => current.filter(({ _id }) => _id !== folderPendingDeletion._id));
+      setRooms((current) => current.map((room) => String(room.folderId) === folderPendingDeletion._id ? { ...room, folderId: null } : room));
+      setActiveFolderId('unfiled');
+      setFolderPendingDeletion(null);
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Could not delete this folder.');
+    } finally {
+      setFolderSubmitting(false);
+    }
+  }
 
   function handleLogout() {
     logout();
@@ -160,14 +242,65 @@ export default function Dashboard() {
           <span className="new-room-copy">{isDesigner ? 'Start a client design project' : 'Start with a fresh floor plan'}</span>
         </Link>
 
+        {isDesigner && (
+          <section className="project-folders" aria-label="Project folders">
+            <div className="project-folder-heading">
+              <div>
+                <p className="eyebrow">Project library</p>
+                <h2>Folders</h2>
+              </div>
+              <button className="btn-ghost" type="button" onClick={startFolderCreate}>+ New folder</button>
+            </div>
+            {folderMode && (
+              <form className="project-folder-form" onSubmit={saveFolder}>
+                <label htmlFor="project-folder-name">{folderMode === 'rename' ? 'Rename folder' : 'Folder name'}</label>
+                <input
+                  id="project-folder-name"
+                  value={folderName}
+                  onChange={(event) => setFolderName(event.target.value)}
+                  maxLength={40}
+                  autoFocus
+                  required
+                />
+                <button className="btn-primary" type="submit" disabled={folderSubmitting}>{folderSubmitting ? 'Saving…' : 'Save folder'}</button>
+                <button className="btn-ghost" type="button" onClick={() => setFolderMode('')} disabled={folderSubmitting}>Cancel</button>
+              </form>
+            )}
+            <div className="project-folder-tabs" role="tablist" aria-label="Filter projects by folder">
+              <button type="button" role="tab" aria-selected={activeFolderId === 'all'} onClick={() => setActiveFolderId('all')}>
+                All projects <span>{rooms.length}</span>
+              </button>
+              <button type="button" role="tab" aria-selected={activeFolderId === 'unfiled'} onClick={() => setActiveFolderId('unfiled')}>
+                Unfiled <span>{rooms.filter((room) => !room.folderId).length}</span>
+              </button>
+              {folders.map((folder) => (
+                <button key={folder._id} type="button" role="tab" aria-selected={activeFolderId === folder._id} onClick={() => setActiveFolderId(folder._id)}>
+                  {folder.name} <span>{rooms.filter((room) => String(room.folderId) === folder._id).length}</span>
+                </button>
+              ))}
+            </div>
+            {selectedFolder && (
+              <div className="project-folder-manage">
+                <span>Viewing <strong>{selectedFolder.name}</strong></span>
+                <button className="btn-ghost" type="button" onClick={startFolderRename}>Rename</button>
+                <button className="btn-ghost danger" type="button" onClick={() => setFolderPendingDeletion(selectedFolder)}>Delete folder</button>
+              </div>
+            )}
+          </section>
+        )}
+
         {loading && <p className="muted">Loading rooms…</p>}
         {error && <p className="form-error">{error}</p>}
 
-        {!loading && !error && rooms.length === 0 && (
+        {!loading && !error && visibleRooms.length === 0 && (
           <p className="muted">{isDesigner ? 'No projects yet. Start one to organize a client design.' : 'No rooms yet — start one and it will show up here.'}</p>
         )}
 
-        {rooms.map((room) => (
+        {!loading && !error && isDesigner && rooms.length > 0 && visibleRooms.length === 0 && (
+          <p className="muted">No projects in this folder yet.</p>
+        )}
+
+        {visibleRooms.map((room) => (
           <article className="room-card" key={room._id}>
             <Link to={`/room/${room._id}`} className="room-preview" aria-label={`Open ${isDesigner ? 'project' : 'room'} ${room.roomName}`}>
               <span className="room-preview-grid">
@@ -209,6 +342,20 @@ export default function Dashboard() {
               <button className="btn-ghost" type="button" onClick={() => openShare(room)}>
                 {isDesigner ? 'Share with client' : 'Share layout'}
               </button>
+              {isDesigner && (
+                <label className="project-folder-move">
+                  <span>{movingRoomId === room._id ? 'Moving…' : 'Folder'}</span>
+                  <select
+                    aria-label={`Move ${room.roomName} to a folder`}
+                    value={room.folderId || ''}
+                    onChange={(event) => moveRoom(room, event.target.value)}
+                    disabled={movingRoomId === room._id}
+                  >
+                    <option value="">Unfiled</option>
+                    {folders.map((folder) => <option key={folder._id} value={folder._id}>{folder.name}</option>)}
+                  </select>
+                </label>
+              )}
             </div>
           </article>
         ))}
@@ -229,6 +376,21 @@ export default function Dashboard() {
               <button className="btn-danger" type="button" onClick={confirmDelete} disabled={deletingRoomId !== null}>
                 {deletingRoomId ? 'Deleting…' : 'Delete room'}
               </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {folderPendingDeletion && (
+        <div className="delete-dialog-backdrop" role="presentation">
+          <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-folder-title">
+            <div className="delete-dialog-icon" aria-hidden="true">×</div>
+            <p className="eyebrow">Remove folder</p>
+            <h2 id="delete-folder-title">Delete {folderPendingDeletion.name}?</h2>
+            <p className="muted">Projects in this folder will move to Unfiled. They will not be deleted.</p>
+            <div className="delete-dialog-actions">
+              <button className="btn-ghost" type="button" onClick={() => setFolderPendingDeletion(null)} disabled={folderSubmitting}>Keep folder</button>
+              <button className="btn-danger" type="button" onClick={confirmDeleteFolder} disabled={folderSubmitting}>{folderSubmitting ? 'Deleting…' : 'Delete folder'}</button>
             </div>
           </section>
         </div>

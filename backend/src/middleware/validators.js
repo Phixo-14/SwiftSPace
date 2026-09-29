@@ -25,6 +25,14 @@ const emailSchema = Joi.object({
   email: Joi.string().email({ tlds: false }).required(),
 });
 
+const projectFolderSchema = Joi.object({
+  name: Joi.string().trim().min(1).max(40).required(),
+});
+
+const roomFolderSchema = Joi.object({
+  folderId: Joi.string().hex().length(24).allow(null).required(),
+});
+
 const firebaseSyncSchema = Joi.object({
   idToken: Joi.string().required(),
   username: Joi.string().trim().min(3).max(30).pattern(/^[A-Za-z]+(?: [A-Za-z]+)+$/).required(),
@@ -103,4 +111,4 @@ function validateBody(schema) {
   };
 }
 
-module.exports = { registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, roomSchema, roomVersionSchema, validateBody };
+module.exports = { registerSchema, loginSchema, verificationSchema, emailSchema, projectFolderSchema, roomFolderSchema, firebaseSyncSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, roomSchema, roomVersionSchema, validateBody };

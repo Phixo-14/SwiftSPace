@@ -1,6 +1,13 @@
 const express = require('express');
 const { requireAuth, requireDesigner } = require('../middleware/auth');
-const { validateBody, roomSchema, roomVersionSchema } = require('../middleware/validators');
+const { validateBody, projectFolderSchema, roomFolderSchema, roomSchema, roomVersionSchema } = require('../middleware/validators');
+const {
+  getFolders,
+  createFolder,
+  renameFolder,
+  deleteFolder,
+  moveRoomToFolder,
+} = require('../controllers/projectFolderController');
 const {
   getRooms,
   getRoomById,
@@ -20,6 +27,11 @@ const router = express.Router();
 // Every /api/rooms route requires a logged-in user.
 router.use(requireAuth);
 
+router.get('/folders', requireDesigner, getFolders);
+router.post('/folders', requireDesigner, validateBody(projectFolderSchema), createFolder);
+router.patch('/folders/:folderId', requireDesigner, validateBody(projectFolderSchema), renameFolder);
+router.delete('/folders/:folderId', requireDesigner, deleteFolder);
+router.patch('/:id/folder', requireDesigner, validateBody(roomFolderSchema), moveRoomToFolder);
 router.get('/', getRooms);
 router.get('/:id', getRoomById);
 router.post('/', validateBody(roomSchema), createRoom);

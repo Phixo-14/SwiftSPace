@@ -16,6 +16,7 @@ const PlacedItemSchema = new mongoose.Schema(
 const RoomSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    folderId: { type: mongoose.Schema.Types.ObjectId, ref: 'ProjectFolder', default: null },
     roomName: { type: String, required: true, trim: true, maxlength: 60 },
     clientName: { type: String, trim: true, maxlength: 120, default: '' },
     measurements: {
