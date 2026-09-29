@@ -72,6 +72,7 @@ export default function RoomEditor() {
   const [zoom, setZoom] = useState(1);
   const [fitZoom, setFitZoom] = useState(1);
   const [platformRotation, setPlatformRotation] = useState(0);
+  const [platformDiamond, setPlatformDiamond] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [status, setStatus] = useState('');
@@ -771,12 +772,16 @@ export default function RoomEditor() {
 
     function fitPlatform() {
       const { width, height } = canvas.getBoundingClientRect();
-      const isQuarterTurn = platformRotation % 180 !== 0;
-      const platformWidth = (isQuarterTurn ? dimensions.length : dimensions.width) * 43;
-      const platformHeight = (isQuarterTurn ? dimensions.width : dimensions.length) * 43;
+      const platformWidth = dimensions.width * 43;
+      const platformHeight = dimensions.length * 43;
+      const angle = (platformRotation + (platformDiamond ? 45 : 0)) * Math.PI / 180;
+      const cosine = Math.abs(Math.cos(angle));
+      const sine = Math.abs(Math.sin(angle));
+      const rotatedWidth = platformWidth * cosine + platformHeight * sine;
+      const rotatedHeight = platformWidth * sine + platformHeight * cosine;
       const availableWidth = Math.max(1, width - 80);
       const availableHeight = Math.max(1, height - 112);
-      const nextFitZoom = Math.min(1, availableWidth / platformWidth, availableHeight / platformHeight);
+      const nextFitZoom = Math.min(1, availableWidth / rotatedWidth, availableHeight / rotatedHeight);
       setFitZoom(Math.max(0.1, Number(nextFitZoom.toFixed(2))));
     }
 
@@ -789,7 +794,7 @@ export default function RoomEditor() {
     const observer = new ResizeObserver(fitPlatform);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [dimensions.width, dimensions.length, loading, platformRotation]);
+  }, [dimensions.width, dimensions.length, loading, platformDiamond, platformRotation]);
 
   function formatTimer(seconds) {
     const hours = Math.floor(seconds / 3600).toString().padStart(2, '0');
@@ -941,13 +946,16 @@ export default function RoomEditor() {
             <button type="button" onClick={() => setPlatformRotation((current) => (current + 90) % 360)} title="Rotate platform clockwise" aria-label="Rotate platform clockwise">
               ↷
             </button>
-            <button type="button" onClick={() => setPlatformRotation(0)} disabled={platformRotation === 0} title="Reset platform orientation" aria-label="Reset platform orientation">
+            <button type="button" onClick={() => { setPlatformRotation(0); setPlatformDiamond(false); }} disabled={platformRotation === 0 && !platformDiamond} title="Reset platform orientation" aria-label="Reset platform orientation">
               0°
             </button>
-            <span aria-live="polite">{platformRotation}°</span>
+            <button className="workspace-diamond-button" type="button" aria-label="Toggle diamond platform view" aria-pressed={platformDiamond} title={platformDiamond ? 'Switch to square platform view' : 'Switch to diamond platform view'} onClick={() => setPlatformDiamond((current) => !current)}>
+              ◇
+            </button>
+            <span aria-live="polite">{(platformRotation + (platformDiamond ? 45 : 0)) % 360}°</span>
           </div>
           {hoverError && <div className="placement-warning">{hoverError}</div>}
-          <div className="workspace-zoom" style={{ transform: `scale(${zoom * fitZoom}) rotate(${platformRotation}deg)` }}>
+          <div className="workspace-zoom" style={{ transform: `scale(${zoom * fitZoom}) rotate(${platformRotation + (platformDiamond ? 45 : 0)}deg)` }}>
             <div
               className="iso-grid"
               style={{
@@ -1009,6 +1017,7 @@ export default function RoomEditor() {
                       iconKey={previewItem.catalogItem.iconKey}
                       color={previewItem.catalogItem.defaultColor}
                       rotation={0}
+                      isometric={platformDiamond}
                     />
                   </span>
                 </div>
@@ -1048,6 +1057,7 @@ export default function RoomEditor() {
                         iconKey={catalogItem.iconKey}
                         color={item.customColor || catalogItem.defaultColor}
                         rotation={displayRotation}
+                        isometric={platformDiamond}
                       />
                     </span>
                   </button>
@@ -1334,7 +1344,7 @@ export default function RoomEditor() {
                         '--item-color': item.customColor || catalogItem.defaultColor,
                       }}
                     >
-                      <ItemGlyph iconKey={catalogItem.iconKey} color={item.customColor || catalogItem.defaultColor} rotation={item.rotation} />
+                      <ItemGlyph iconKey={catalogItem.iconKey} color={item.customColor || catalogItem.defaultColor} rotation={item.rotation} isometric={platformDiamond} />
                     </div>
                   );
                 })}
