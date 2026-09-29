@@ -29,6 +29,11 @@ function readDraft(key) {
   }
 }
 
+function createPlacementId() {
+  return globalThis.crypto?.randomUUID?.()
+    || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export default function RoomEditor() {
   const { id } = useParams();
   const isNew = !id;
@@ -112,7 +117,10 @@ export default function RoomEditor() {
         setGridColor(draft.gridColor || FLOOR_OPTIONS[0].grid);
         const draftFloor = FLOOR_OPTIONS.find((option) => option.floor === draft.floorColor);
         setWorkspaceColor(draftFloor?.workspace || FLOOR_OPTIONS[0].workspace);
-        setPlacedItems(draft.placedItems || []);
+        setPlacedItems((draft.placedItems || []).map((item) => ({
+          ...item,
+          placementId: item.placementId || createPlacementId(),
+        })));
         setOverlapRecords(draft.overlapRecords || []);
         setStatus('Restored unsaved draft.');
       } catch {
@@ -130,9 +138,9 @@ export default function RoomEditor() {
           const roomRes = await api.get(`/rooms/${id}`);
           if (cancelled) return;
           const validCatalogIds = new Set(catalogRes.data.map((item) => item._id.toString()));
-          const validPlacedItems = (roomRes.data.placedItems || []).filter((item) =>
-            validCatalogIds.has(item.catalogItemId?.toString())
-          );
+          const validPlacedItems = (roomRes.data.placedItems || [])
+            .filter((item) => validCatalogIds.has(item.catalogItemId?.toString()))
+            .map((item) => ({ ...item, placementId: item.placementId || createPlacementId() }));
           setRoomName(roomRes.data.roomName);
           setClientName(roomRes.data.clientName || '');
           const savedMeasurements = roomRes.data.measurements || {};
@@ -410,7 +418,7 @@ export default function RoomEditor() {
 
         setPlacedItems((prev) => [
           ...prev,
-          { catalogItemId: armedItemId, gridX: x, gridY: y, rotation: currentRotation, customColor: null },
+          { placementId: createPlacementId(), catalogItemId: armedItemId, gridX: x, gridY: y, rotation: currentRotation, customColor: null },
         ]);
         setSelectedKey(key);
         setStatus('');
@@ -546,9 +554,9 @@ export default function RoomEditor() {
   async function handleSave(afterSave) {
     setSaving(true);
     setStatus('');
-    const validPlacedItems = placedItems.filter((item) =>
-      catalogById.has(item.catalogItemId?.toString())
-    );
+    const validPlacedItems = placedItems
+      .filter((item) => catalogById.has(item.catalogItemId?.toString()))
+      .map((item) => ({ ...item, placementId: item.placementId || createPlacementId() }));
     const payload = {
       roomName,
       clientName,

@@ -223,6 +223,7 @@ Open that URL in your browser.
 | Designer client, measurement, and note fields | `models/Room.js` persisted by `roomController.js`, edited from `RoomEditor.jsx` |
 | `POST /api/rooms/:id/share`, `DELETE /api/rooms/:id/share`, `GET /api/shared-rooms/:token` | Owner-controlled share links and public read-only room access |
 | `GET /api/rooms/:id/versions`, `POST /api/rooms/:id/versions`, `POST /api/rooms/:id/versions/:versionId/restore`, `POST /api/rooms/:id/duplicate` | Interior-designer-only version history, restore, and layout duplication |
+| Furniture rotation adjustments | `FurnitureRotationAdjustment` stores each saved angle change; the admin overview reports the database total |
 | MVC structure | `models/`, `controllers/`, `routes/` folders |
 | Nested JSON document / embedding | `models/Room.js` — `placedItems` is an embedded array, matching your sample document |
 | JWT auth + ownership check | `middleware/auth.js` (verifies token) + `roomController.js` (checks `room.userId === req.user.id` on every read/update/delete) |

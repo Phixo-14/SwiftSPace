@@ -3,6 +3,7 @@ const CatalogItem = require('../models/CatalogItem');
 const RoomTimer = require('../models/RoomTimer');
 const PlacementError = require('../models/PlacementError');
 const RoomVersion = require('../models/RoomVersion');
+const FurnitureRotationAdjustment = require('../models/FurnitureRotationAdjustment');
 const crypto = require('crypto');
 
 async function getRoomExtras(roomId) {
@@ -151,6 +152,20 @@ async function updateRoom(req, res) {
   const fitError = await assertItemsFitAndExist(dimensions, placedItems);
   if (fitError) return res.status(400).json({ message: fitError });
 
+  const previousPlacements = new Map(room.placedItems.map((item) => [item.placementId, item]));
+  const rotationAdjustments = placedItems.flatMap((item) => {
+    const previous = previousPlacements.get(item.placementId);
+    if (!previous || previous.rotation === item.rotation) return [];
+    return [{
+      roomId: room._id,
+      userId: req.user.id,
+      placementId: item.placementId,
+      catalogItemId: item.catalogItemId,
+      fromDegrees: previous.rotation,
+      toDegrees: item.rotation,
+    }];
+  });
+
   try {
     room.roomName = roomName;
     room.clientName = clientName;
@@ -162,6 +177,13 @@ async function updateRoom(req, res) {
     room.placedItems = placedItems;
     await room.save();
     await saveRoomExtras(room._id, req.user.id, timerSeconds, overlapRecords);
+    if (rotationAdjustments.length) {
+      try {
+        await FurnitureRotationAdjustment.insertMany(rotationAdjustments);
+      } catch (error) {
+        console.error(`Rotation adjustment logging failed for ${room._id}:`, error);
+      }
+    }
     res.json({ ...room.toObject(), timerSeconds, overlapRecords });
   } catch (error) {
     console.error(`Room save failed for ${room._id}:`, error);
@@ -181,6 +203,7 @@ async function deleteRoom(req, res) {
     RoomTimer.deleteOne({ roomId: room._id }),
     PlacementError.deleteMany({ roomId: room._id }),
     RoomVersion.deleteMany({ roomId: room._id }),
+    FurnitureRotationAdjustment.deleteMany({ roomId: room._id }),
   ]);
   res.status(204).send();
 }

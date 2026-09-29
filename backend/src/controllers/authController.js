@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Room = require('../models/Room');
 const RoomVersion = require('../models/RoomVersion');
+const FurnitureRotationAdjustment = require('../models/FurnitureRotationAdjustment');
 const CatalogItem = require('../models/CatalogItem');
 const RoomTimer = require('../models/RoomTimer');
 const PlacementError = require('../models/PlacementError');
@@ -209,6 +210,7 @@ async function deleteUserData(userIds) {
   await Promise.all([
     Room.deleteMany({ userId: { $in: userIds } }),
     RoomVersion.deleteMany({ userId: { $in: userIds } }),
+    FurnitureRotationAdjustment.deleteMany({ userId: { $in: userIds } }),
     RoomTimer.deleteMany({ userId: { $in: userIds } }),
     PlacementError.deleteMany({ userId: { $in: userIds } }),
     User.deleteMany({ _id: { $in: userIds } }),
@@ -455,7 +457,7 @@ async function deleteUser(req, res) {
 
 // GET /api/auth/admin/overview — requires an existing admin token.
 async function getAdminOverview(req, res) {
-  const [users, rooms, catalogItems, catalogCategoryItems, allRooms, timers, placementErrors] = await Promise.all([
+  const [users, rooms, catalogItems, catalogCategoryItems, allRooms, timers, placementErrors, rotationAdjustments] = await Promise.all([
     User.find().select('_id username email role createdAt').sort({ role: 1, createdAt: -1 }),
     Room.find().select('roomName dimensions userId createdAt updatedAt').populate('userId', 'username email').sort({ updatedAt: -1 }).limit(8),
     CatalogItem.countDocuments(),
@@ -465,6 +467,7 @@ async function getAdminOverview(req, res) {
       .populate('userId', 'username'),
     RoomTimer.find(),
     PlacementError.find().populate('catalogItemId', 'name'),
+    FurnitureRotationAdjustment.countDocuments(),
   ]);
 
   const timerByRoom = new Map(timers.map((timer) => [timer.roomId.toString(), Number(timer.seconds) || 0]));
@@ -510,6 +513,7 @@ async function getAdminOverview(req, res) {
       rooms: await Room.countDocuments(),
       catalogItems,
       placements: totalPlacements,
+      furnitureRotationAdjustments: rotationAdjustments,
       overlaps: overlapRecords.length,
       averageArea: allRooms.length ? Math.round(totalArea / allRooms.length) : 0,
       categoryCounts,

@@ -239,6 +239,7 @@ export default function AdminDashboard() {
               <article className="stat-card"><span className="stat-label">Administrators</span><strong>{overview.stats.admins}</strong><span className="stat-note">Privileged accounts</span></article>
               <article className="stat-card"><span className="stat-label">Saved rooms</span><strong>{overview.stats.rooms}</strong><span className="stat-note">Across all workspaces</span></article>
               <article className="stat-card"><span className="stat-label">Catalog items</span><strong>{overview.stats.catalogItems}</strong><span className="stat-note">Available furniture</span></article>
+              <article className="stat-card"><span className="stat-label">Rotation adjustments</span><strong>{overview.stats.furnitureRotationAdjustments}</strong><span className="stat-note">Saved angle changes tracked</span></article>
             </section>
 
             <section className="analytics-panel" id="admin-analytics">

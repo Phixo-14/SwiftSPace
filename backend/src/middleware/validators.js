@@ -1,4 +1,5 @@
 const Joi = require('joi');
+const crypto = require('crypto');
 
 // Central place for every Joi schema used across the API. Controllers call
 // `schema.validate(req.body)` directly so this stays framework-agnostic.
@@ -41,6 +42,7 @@ const accountDeleteSchema = Joi.object({
 const adminSchema = registerSchema.keys({ role: Joi.forbidden() });
 
 const placedItemSchema = Joi.object({
+  placementId: Joi.string().trim().min(1).max(64).default(() => crypto.randomUUID()),
   catalogItemId: Joi.string().hex().length(24).required(),
   gridX: Joi.number().integer().min(0).required(),
   gridY: Joi.number().integer().min(0).required(),
@@ -79,7 +81,7 @@ const roomSchema = Joi.object({
   }).required(),
   floorColor: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).default('#BCA17A'),
   gridColor: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).default('#8C7455'),
-  placedItems: Joi.array().items(placedItemSchema).default([]),
+  placedItems: Joi.array().items(placedItemSchema).unique('placementId').default([]),
   overlapRecords: Joi.array().items(overlapRecordSchema).max(100).default([]),
 });
 

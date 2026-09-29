@@ -1,7 +1,9 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const PlacedItemSchema = new mongoose.Schema(
   {
+    placementId: { type: String, required: true, maxlength: 64, default: () => crypto.randomUUID() },
     catalogItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'CatalogItem', required: true },
     gridX: { type: Number, required: true, min: 0 },
     gridY: { type: Number, required: true, min: 0 },
