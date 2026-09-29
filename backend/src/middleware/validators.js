@@ -28,7 +28,7 @@ const emailSchema = Joi.object({
 const firebaseSyncSchema = Joi.object({
   idToken: Joi.string().required(),
   username: Joi.string().trim().min(3).max(30).pattern(/^[A-Za-z]+(?: [A-Za-z]+)+$/).required(),
-  role: Joi.string().valid('homeowner', 'interior-designer').default('homeowner'),
+  role: Joi.string().valid('homeowner', 'interior-designer'),
 });
 
 const firebaseDeleteSchema = Joi.object({

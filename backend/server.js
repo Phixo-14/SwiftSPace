@@ -15,7 +15,6 @@ const { ensureCatalog } = require('./src/seed/seedCatalog');
 const authRoutes = require('./src/routes/authRoutes');
 const catalogRoutes = require('./src/routes/catalogRoutes');
 const roomRoutes = require('./src/routes/roomRoutes');
-const sharedRoomRoutes = require('./src/routes/sharedRoomRoutes');
 const { requireAuth, requireAdmin } = require('./src/middleware/auth');
 
 const app = express();
@@ -42,7 +41,6 @@ const authLimiter = rateLimit({
   limit: 20,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  skip: (req) => req.path === '/firebase-user-deleted',
   message: { message: 'Too many authentication attempts. Try again later.' },
 });
 
@@ -51,7 +49,6 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/rooms', roomRoutes);
-app.use('/api/shared-rooms', sharedRoomRoutes);
 app.get('/api/admin/health', requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true, role: req.user.role, user: req.user.username });
 });
@@ -64,6 +61,11 @@ app.use((err, req, res, next) => {
 });
 
 async function ensureAdminAccount() {
+  if (process.env.BOOTSTRAP_ADMIN?.toLowerCase() === 'false') {
+    console.log('Admin account bootstrap disabled.');
+    return;
+  }
+
   const adminUsername = process.env.ADMIN_USERNAME;
   const adminEmail = process.env.ADMIN_EMAIL;
   const adminPassword = process.env.ADMIN_PASSWORD;
@@ -97,7 +99,6 @@ const PORT = process.env.PORT || 5000;
 
 connectDB()
   .then(async () => {
-    await User.updateMany({ role: 'user' }, { $set: { role: 'homeowner' } });
     await ensureAdminAccount();
     await ensureCatalog();
     app.listen(PORT, () => console.log(`Room Designer API listening on port ${PORT}`));

@@ -31,11 +31,16 @@ export default function VerifyEmail() {
         const firebaseToken = await firebaseAuth.currentUser.getIdToken(true);
         const { data } = await api.post('/auth/firebase-sync', {
           idToken: firebaseToken,
-          username: sessionStorage.getItem('firebase_pending_username') || email.split('@')[0],
-          role: sessionStorage.getItem('firebase_pending_role') || 'homeowner',
+          username: localStorage.getItem('firebase_pending_username')
+            || sessionStorage.getItem('firebase_pending_username')
+            || email.split('@')[0],
+          role: localStorage.getItem('firebase_pending_role')
+            || sessionStorage.getItem('firebase_pending_role'),
         });
         sessionStorage.removeItem('firebase_pending_username');
         sessionStorage.removeItem('firebase_pending_role');
+        localStorage.removeItem('firebase_pending_username');
+        localStorage.removeItem('firebase_pending_role');
         login(data.token, data.user);
         navigate('/');
       } else {

@@ -218,6 +218,7 @@ async function firebaseSync(req, res) {
   } else {
     user.firebaseUid = decoded.uid;
     user.emailVerified = true;
+    if (req.body.role) user.role = req.body.role;
     await user.save();
   }
 
