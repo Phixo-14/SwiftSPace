@@ -70,6 +70,7 @@ export default function RoomEditor() {
   const [hoverCell, setHoverCell] = useState(null);
   const [draggedItem, setDraggedItem] = useState(null);
   const [zoom, setZoom] = useState(1);
+  const [fitZoom, setFitZoom] = useState(1);
   const [platformRotation, setPlatformRotation] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -90,6 +91,7 @@ export default function RoomEditor() {
   const baselineRef = useRef(null);
   const historyRef = useRef({ scope: null, past: [], future: [], current: null });
   const historyReadyScopeRef = useRef(null);
+  const canvasWrapRef = useRef(null);
 
   function getEditorSnapshot(snapshotPlacedItems = placedItems) {
     return JSON.stringify({
@@ -763,6 +765,32 @@ export default function RoomEditor() {
     setZoom(Math.max(0.6, Math.min(1.8, Number(nextZoom.toFixed(2)))));
   }
 
+  useEffect(() => {
+    const canvas = canvasWrapRef.current;
+    if (!canvas) return undefined;
+
+    function fitPlatform() {
+      const { width, height } = canvas.getBoundingClientRect();
+      const isQuarterTurn = platformRotation % 180 !== 0;
+      const platformWidth = (isQuarterTurn ? dimensions.length : dimensions.width) * 43;
+      const platformHeight = (isQuarterTurn ? dimensions.width : dimensions.length) * 43;
+      const availableWidth = Math.max(1, width - 80);
+      const availableHeight = Math.max(1, height - 112);
+      const nextFitZoom = Math.min(1, availableWidth / platformWidth, availableHeight / platformHeight);
+      setFitZoom(Math.max(0.1, Number(nextFitZoom.toFixed(2))));
+    }
+
+    fitPlatform();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', fitPlatform);
+      return () => window.removeEventListener('resize', fitPlatform);
+    }
+
+    const observer = new ResizeObserver(fitPlatform);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [dimensions.width, dimensions.length, loading, platformRotation]);
+
   function formatTimer(seconds) {
     const hours = Math.floor(seconds / 3600).toString().padStart(2, '0');
     const minutes = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
@@ -890,7 +918,7 @@ export default function RoomEditor() {
           {armedItemId && <p className="hint">Click an empty cell to place it.</p>}
         </aside>
 
-        <main className="canvas-wrap">
+        <main className="canvas-wrap" ref={canvasWrapRef}>
           <div className="print-room-title" aria-hidden="true">
             <p className="eyebrow">Studio Grid / Room design</p>
             <h1>{roomName}</h1>
@@ -899,11 +927,11 @@ export default function RoomEditor() {
             <button type="button" onClick={() => updateZoom(zoom - 0.1)} disabled={zoom <= 0.6}>
               −
             </button>
-            <button type="button" onClick={() => updateZoom(1)}>Reset</button>
+            <button type="button" onClick={() => updateZoom(1)}>Fit</button>
             <button type="button" onClick={() => updateZoom(zoom + 0.1)} disabled={zoom >= 1.8}>
               +
             </button>
-            <span>{Math.round(zoom * 100)}%</span>
+            <span>{Math.round(zoom * fitZoom * 100)}%</span>
             <button className="workspace-history-button" type="button" onClick={undoEdit} disabled={!canUndo} title="Undo the last room change">Undo</button>
             <button className="workspace-history-button" type="button" onClick={redoEdit} disabled={!canRedo} title="Redo the last undone room change">Redo</button>
             <span className="workspace-control-separator" aria-hidden="true" />
@@ -919,7 +947,7 @@ export default function RoomEditor() {
             <span aria-live="polite">{platformRotation}°</span>
           </div>
           {hoverError && <div className="placement-warning">{hoverError}</div>}
-          <div className="workspace-zoom" style={{ transform: `scale(${zoom}) rotate(${platformRotation}deg)` }}>
+          <div className="workspace-zoom" style={{ transform: `scale(${zoom * fitZoom}) rotate(${platformRotation}deg)` }}>
             <div
               className="iso-grid"
               style={{
