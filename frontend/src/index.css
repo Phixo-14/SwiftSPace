@@ -522,6 +522,29 @@ a {
   white-space: nowrap;
 }
 
+.admin-sidebar-nav button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 40px;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.admin-sidebar-nav button:hover,
+.admin-sidebar-nav button:focus-visible {
+  border-color: var(--border-strong);
+  background: rgba(130, 214, 168, 0.08);
+  color: var(--accent-strong);
+}
+
 .admin-sidebar-nav a:hover,
 .admin-sidebar-nav a:focus-visible {
   border-color: var(--border-strong);
@@ -546,6 +569,14 @@ a {
   padding: 1rem clamp(1rem, 4vw, 3.5rem) 1rem 5rem;
   border-bottom-color: rgba(65, 109, 91, 0.65);
   background: rgba(13, 29, 23, 0.94);
+}
+
+.dashboard-page .topbar {
+  padding-left: 5rem;
+}
+
+.dashboard-page .dashboard-main {
+  padding-left: 5rem;
 }
 
 .admin-brand {
@@ -2612,6 +2643,10 @@ a {
     padding: 1rem;
   }
 
+  .dashboard-page .topbar {
+    padding: 1rem;
+  }
+
   .topbar-actions {
     gap: 0.5rem;
   }
@@ -2621,6 +2656,10 @@ a {
   }
 
   .dashboard-main {
+    padding: 1.5rem 1rem;
+  }
+
+  .dashboard-page .dashboard-main {
     padding: 1.5rem 1rem;
   }
 

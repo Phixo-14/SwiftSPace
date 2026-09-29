@@ -127,7 +127,18 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="page">
+    <div className="page dashboard-page">
+      <aside className="admin-hover-sidebar" aria-label="Workspace navigation">
+        <div className="admin-sidebar-brand">
+          <span className="admin-brand-mark">+</span>
+          <span className="admin-sidebar-label">Studio Grid</span>
+        </div>
+        <nav className="admin-sidebar-nav">
+          <a href="#dashboard-overview"><span className="admin-nav-icon">⌂</span><span className="admin-sidebar-label">My layouts</span></a>
+          <Link to="/room/new"><span className="admin-nav-icon">+</span><span className="admin-sidebar-label">New room</span></Link>
+          {!isAdmin && <a href="#account-settings" onClick={() => setAccountSettingsOpen(true)}><span className="admin-nav-icon">◎</span><span className="admin-sidebar-label">Manage account</span></a>}
+        </nav>
+      </aside>
       <header className="topbar">
         <div>
           <p className="eyebrow">Studio Grid</p>
@@ -142,7 +153,7 @@ export default function Dashboard() {
       </header>
 
       <main className="dashboard-main">
-        <div className="dashboard-heading">
+        <div className="dashboard-heading" id="dashboard-overview">
           <div>
             <p className="eyebrow">Workspace</p>
             <h1>Your layouts</h1>
@@ -150,7 +161,7 @@ export default function Dashboard() {
           <p className="dashboard-subtitle">Saved rooms and new ideas, all in one place.</p>
         </div>
         {!isAdmin && (
-          <section className="account-settings" aria-labelledby="account-settings-heading">
+          <section className="account-settings" id="account-settings" aria-labelledby="account-settings-heading">
             <div className="account-settings-heading">
               <div>
                 <p className="eyebrow">Account</p>
