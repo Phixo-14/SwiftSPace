@@ -40,7 +40,7 @@ export default function RoomEditor() {
   const isNew = !id;
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isDesigner = user?.role === 'interior-designer';
+  const isDesigner = user?.role === 'interior-designer' || user?.role === 'admin';
   const draftStorageKey = `studio-grid-draft:${id || 'new'}`;
   const storedDraft = readDraft(draftStorageKey);
 

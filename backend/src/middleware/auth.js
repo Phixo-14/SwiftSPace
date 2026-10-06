@@ -30,8 +30,8 @@ function requireAdmin(req, res, next) {
 }
 
 function requireDesigner(req, res, next) {
-  if (req.user?.role !== 'interior-designer') {
-    return res.status(403).json({ message: 'Interior designer access required.' });
+  if (req.user?.role !== 'interior-designer' && req.user?.role !== 'admin') {
+    return res.status(403).json({ message: 'Interior designer or admin access required.' });
   }
   next();
 }

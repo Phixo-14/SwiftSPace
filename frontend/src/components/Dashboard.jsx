@@ -25,7 +25,7 @@ export default function Dashboard() {
   const [shareRevoking, setShareRevoking] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const { user, isAdmin, logout } = useAuth();
-  const isDesigner = user?.role === 'interior-designer';
+  const isDesigner = user?.role === 'interior-designer' || user?.role === 'admin';
   const navigate = useNavigate();
 
   useEffect(() => {

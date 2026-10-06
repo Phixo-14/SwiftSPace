@@ -2073,7 +2073,10 @@ a {
 .room-preview {
   display: grid;
   place-items: center;
-  height: 86px;
+  width: 100%;
+  min-height: 110px;
+  height: clamp(110px, 18vw, 180px);
+  aspect-ratio: 16 / 10;
   margin: -0.1rem -0.1rem 0.75rem;
   overflow: hidden;
   background: #6e5c48;
@@ -2083,10 +2086,12 @@ a {
 
 .room-preview-grid {
   display: grid;
-  grid-template-columns: repeat(4, 18px);
-  grid-template-rows: repeat(3, 18px);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(5, minmax(0, 1fr));
+  width: 92%;
+  height: 92%;
   gap: 2px;
-  transform: rotate(45deg) scaleY(0.7);
+  transform: rotate(45deg) scale(0.92);
 }
 
 .room-preview-cell {
