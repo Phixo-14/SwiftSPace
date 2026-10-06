@@ -1089,10 +1089,12 @@ export default function RoomEditor() {
               </div>
             </details>
           )}
-          {!isNew && (
-            <details className="designer-inspector-accordion designer-versions-accordion">
-              <summary>Saved versions <span>{versions.length}</span></summary>
-              <div className="designer-version-panel">
+          <details className="designer-inspector-accordion designer-versions-accordion">
+            <summary>Saved versions <span>{versions.length}</span></summary>
+            <div className="designer-version-panel">
+              {isNew ? (
+                <p className="muted small">Save this room first to create and view versions.</p>
+              ) : (
                 <form onSubmit={handleSaveVersion}>
                   <label className="inspector-field">
                     Version name
@@ -1100,6 +1102,9 @@ export default function RoomEditor() {
                   </label>
                   <button className="btn-ghost" type="submit" disabled={versionSaving}>{versionSaving ? 'Saving…' : 'Save version'}</button>
                 </form>
+              )}
+              {!isNew && (
+                <>
                 {versionsLoading && <p className="muted small">Loading versions…</p>}
                 {versionError && <p className="form-error" role="alert">{versionError}</p>}
                 {versionMessage && <p className="form-success" role="status">{versionMessage}</p>}
@@ -1115,9 +1120,10 @@ export default function RoomEditor() {
                   </div>
                 ))}
                 {!versionsLoading && versions.length === 0 && <p className="muted small">No versions saved yet.</p>}
-              </div>
-            </details>
-          )}
+                </>
+              )}
+            </div>
+          </details>
           <p className="panel-heading">Room</p>
           <label className="inspector-field">
             Width
