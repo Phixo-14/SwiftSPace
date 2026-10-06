@@ -18,18 +18,24 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
-      - name: Install backend dependencies
-        working-directory: backend
-        run: npm ci
+      - name: Install MongoDB database tools
+        run: |
+          curl -fsSL https://pgp.mongodb.com/server-7.0.asc | \
+            gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+          echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
+            tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+          apt-get update
+          apt-get install -y mongodb-database-tools
 
       - name: Create MongoDB backup
-        working-directory: backend
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
-          USE_DOCKER: 'true'
-        run: node scripts/backup-mongo.js
+        run: |
+          mkdir -p backups
+          timestamp=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
+          mongodump --uri="$MONGO_URI" --out="backups/$timestamp"
 
       - name: Commit backup files
         run: |
