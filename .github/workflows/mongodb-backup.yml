@@ -24,15 +24,23 @@ jobs:
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/backups"
+          set -e
+          backup_root="$GITHUB_WORKSPACE/backups"
+          mkdir -p "$backup_root"
+
+          # Fix ownership when a previous failed Docker run created root-owned files.
+          sudo chown -R "$(id -u):$(id -g)" "$backup_root" || true
+          chmod -R u+rwX "$backup_root"
+
           timestamp=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
-          output_dir="$GITHUB_WORKSPACE/backups/$timestamp"
+          output_dir="$backup_root/$timestamp"
           mkdir -p "$output_dir"
 
           docker run --rm \
-            -v "$GITHUB_WORKSPACE/backups:/backups" \
+            --user "$(id -u):$(id -g)" \
+            -v "$backup_root:/backups" \
             mongo:7 \
-            mongodump --uri="$MONGO_URI" --out="/backups/$timestamp"
+            sh -c 'mongodump --uri="$1" --out="/backups/$0"' "$timestamp" "$MONGO_URI"
 
       - name: Commit backup files
         run: |
