@@ -33,9 +33,11 @@ jobs:
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
         run: |
-          mkdir -p backups
+          mkdir -p "$GITHUB_WORKSPACE/backups"
           timestamp=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
-          mongodump --uri="$MONGO_URI" --out="backups/$timestamp"
+          output_dir="$GITHUB_WORKSPACE/backups/$timestamp"
+          mkdir -p "$output_dir"
+          mongodump --uri="$MONGO_URI" --out="$output_dir"
 
       - name: Commit backup files
         run: |
