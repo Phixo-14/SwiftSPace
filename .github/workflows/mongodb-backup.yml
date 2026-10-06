@@ -25,11 +25,15 @@ jobs:
           MONGO_URI: ${{ secrets.MONGO_URI }}
         run: |
           set -e
+
           backup_root="$GITHUB_WORKSPACE/backups"
+
+          # Remove stale root-owned directory from previous failed runs.
+          rm -rf "$backup_root"
           mkdir -p "$backup_root"
 
-          # Fix ownership when a previous failed Docker run created root-owned files.
-          sudo chown -R "$(id -u):$(id -g)" "$backup_root" || true
+          # Make sure the runner user owns the backup folder.
+          chown -R "$(id -u):$(id -g)" "$backup_root"
           chmod -R u+rwX "$backup_root"
 
           timestamp=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
