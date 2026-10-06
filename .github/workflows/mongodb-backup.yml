@@ -20,15 +20,6 @@ jobs:
         with:
           node-version: 24
 
-      - name: Install MongoDB database tools
-        run: |
-          curl -fsSL https://pgp.mongodb.com/server-7.0.asc | \
-            gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
-          echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
-            tee /etc/apt/sources.list.d/mongodb-org-7.0.list
-          apt-get update
-          apt-get install -y mongodb-database-tools
-
       - name: Create MongoDB backup
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
@@ -37,7 +28,11 @@ jobs:
           timestamp=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
           output_dir="$GITHUB_WORKSPACE/backups/$timestamp"
           mkdir -p "$output_dir"
-          mongodump --uri="$MONGO_URI" --out="$output_dir"
+
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/backups:/backups" \
+            mongo:7 \
+            mongodump --uri="$MONGO_URI" --out="/backups/$timestamp"
 
       - name: Commit backup files
         run: |
