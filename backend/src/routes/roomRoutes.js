@@ -39,10 +39,10 @@ router.post('/', validateBody(roomSchema), createRoom);
 router.put('/:id', validateBody(roomSchema), updateRoom);
 router.delete('/:id', deleteRoom);
 router.post('/:id/duplicate', requireDesigner, duplicateRoom);
-router.get('/:id/versions', requireDesigner, getRoomVersions);
-router.get('/:id/versions/:versionId', requireDesigner, getRoomVersion);
-router.post('/:id/versions', requireDesigner, validateBody(roomVersionSchema), createRoomVersion);
-router.post('/:id/versions/:versionId/restore', requireDesigner, restoreRoomVersion);
+router.get('/:id/versions', getRoomVersions);
+router.get('/:id/versions/:versionId', getRoomVersion);
+router.post('/:id/versions', validateBody(roomVersionSchema), createRoomVersion);
+router.post('/:id/versions/:versionId/restore', restoreRoomVersion);
 router.post('/:id/share', createShareLink);
 router.delete('/:id/share', revokeShareLink);
 
