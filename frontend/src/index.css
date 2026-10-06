@@ -2574,6 +2574,29 @@ a {
   background: var(--grid-color, #8c7455);
 }
 
+.grid-resize-handle {
+  position: absolute;
+  z-index: 4;
+  width: 13px;
+  height: 13px;
+  min-width: 13px;
+  padding: 0;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 3px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.35);
+  touch-action: none;
+}
+
+.grid-resize-handle.north-west { top: -7px; left: -7px; cursor: nwse-resize; }
+.grid-resize-handle.north { top: -7px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.grid-resize-handle.north-east { top: -7px; right: -7px; cursor: nesw-resize; }
+.grid-resize-handle.east { top: 50%; right: -7px; transform: translateY(-50%); cursor: ew-resize; }
+.grid-resize-handle.south-east { right: -7px; bottom: -7px; cursor: nwse-resize; }
+.grid-resize-handle.south { bottom: -7px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.grid-resize-handle.south-west { bottom: -7px; left: -7px; cursor: nesw-resize; }
+.grid-resize-handle.west { top: 50%; left: -7px; transform: translateY(-50%); cursor: ew-resize; }
+
 .grid-cell {
   aspect-ratio: 1 / 1;
   background: var(--floor-color, #bca17a);
@@ -2611,6 +2634,7 @@ a {
   .catalog-panel,
   .inspector-panel,
   .workspace-controls,
+  .grid-resize-handle,
   .placement-warning,
   .status-text,
   .export-room-button {

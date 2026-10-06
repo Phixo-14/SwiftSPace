@@ -92,6 +92,7 @@ export default function RoomEditor() {
   const historyRef = useRef({ scope: null, past: [], future: [], current: null });
   const historyReadyScopeRef = useRef(null);
   const canvasWrapRef = useRef(null);
+  const gridResizeRef = useRef(null);
 
   function getEditorSnapshot(snapshotPlacedItems = placedItems) {
     return JSON.stringify({
@@ -761,6 +762,120 @@ export default function RoomEditor() {
     setDimensions((prev) => ({ ...prev, [axis]: n }));
   }
 
+  function beginGridResize(event, edgeX, edgeY) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    const occupiedCoordinates = [...itemsByCell.keys()].map((key) => key.split(',').map(Number));
+    gridResizeRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      edgeX,
+      edgeY,
+      dimensions: { ...dimensions },
+      placedItems,
+      selectedKey,
+      scale: Math.max(0.1, zoom * fitZoom),
+      rotation: platformRotation * Math.PI / 180,
+      minX: occupiedCoordinates.length ? Math.min(...occupiedCoordinates.map(([x]) => x)) : null,
+      maxX: occupiedCoordinates.length ? Math.max(...occupiedCoordinates.map(([x]) => x)) : null,
+      minY: occupiedCoordinates.length ? Math.min(...occupiedCoordinates.map(([, y]) => y)) : null,
+      maxY: occupiedCoordinates.length ? Math.max(...occupiedCoordinates.map(([, y]) => y)) : null,
+    };
+  }
+
+  function resizeGridFromPointer(event) {
+    const resize = gridResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+
+    const screenX = event.clientX - resize.startX;
+    const screenY = event.clientY - resize.startY;
+    const cosine = Math.cos(resize.rotation);
+    const sine = Math.sin(resize.rotation);
+    const cellsX = (screenX * cosine + screenY * sine) / (resize.scale * 43);
+    const cellsY = (-screenX * sine + screenY * cosine) / (resize.scale * 43);
+
+    function getDelta(edge, movement, size, minOccupied, maxOccupied) {
+      if (!edge) return 0;
+      const minimum = edge < 0
+        ? Math.max(1 - size, minOccupied === null ? 1 - size : -minOccupied)
+        : Math.max(1 - size, maxOccupied === null ? 1 - size : maxOccupied + 1 - size);
+      const maximum = 50 - size;
+      return Math.max(minimum, Math.min(maximum, Math.round(edge * movement)));
+    }
+
+    const widthDelta = getDelta(resize.edgeX, cellsX, resize.dimensions.width, resize.minX, resize.maxX);
+    const lengthDelta = getDelta(resize.edgeY, cellsY, resize.dimensions.length, resize.minY, resize.maxY);
+    const shiftX = resize.edgeX < 0 ? widthDelta : 0;
+    const shiftY = resize.edgeY < 0 ? lengthDelta : 0;
+
+    setDimensions({
+      width: resize.dimensions.width + widthDelta,
+      length: resize.dimensions.length + lengthDelta,
+    });
+    if (shiftX || shiftY) {
+      setPlacedItems(resize.placedItems.map((item) => ({
+        ...item,
+        gridX: item.gridX + shiftX,
+        gridY: item.gridY + shiftY,
+      })));
+      if (resize.selectedKey) {
+        const [selectedX, selectedY] = resize.selectedKey.split(',').map(Number);
+        setSelectedKey(`${selectedX + shiftX},${selectedY + shiftY}`);
+      }
+    }
+    setHoverCell(null);
+  }
+
+  function endGridResize(event) {
+    if (gridResizeRef.current?.pointerId === event.pointerId) {
+      gridResizeRef.current = null;
+    }
+  }
+
+  function resizeGridFromKeyboard(event, edgeX, edgeY) {
+    const movementX = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    const movementY = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
+    if ((!edgeX || !movementX) && (!edgeY || !movementY)) return;
+    event.preventDefault();
+
+    const occupiedCoordinates = [...itemsByCell.keys()].map((key) => key.split(',').map(Number));
+    const minX = occupiedCoordinates.length ? Math.min(...occupiedCoordinates.map(([x]) => x)) : null;
+    const maxX = occupiedCoordinates.length ? Math.max(...occupiedCoordinates.map(([x]) => x)) : null;
+    const minY = occupiedCoordinates.length ? Math.min(...occupiedCoordinates.map(([, y]) => y)) : null;
+    const maxY = occupiedCoordinates.length ? Math.max(...occupiedCoordinates.map(([, y]) => y)) : null;
+
+    function getDelta(edge, movement, size, minOccupied, maxOccupied) {
+      if (!edge || !movement) return 0;
+      const minimum = edge < 0
+        ? Math.max(1 - size, minOccupied === null ? 1 - size : -minOccupied)
+        : Math.max(1 - size, maxOccupied === null ? 1 - size : maxOccupied + 1 - size);
+      return Math.max(minimum, Math.min(50 - size, Math.round(edge * movement)));
+    }
+
+    const widthDelta = getDelta(edgeX, movementX, dimensions.width, minX, maxX);
+    const lengthDelta = getDelta(edgeY, movementY, dimensions.length, minY, maxY);
+    const shiftX = edgeX < 0 ? widthDelta : 0;
+    const shiftY = edgeY < 0 ? lengthDelta : 0;
+    if (!widthDelta && !lengthDelta) return;
+
+    setDimensions({ width: dimensions.width + widthDelta, length: dimensions.length + lengthDelta });
+    if (shiftX || shiftY) {
+      setPlacedItems((current) => current.map((item) => ({
+        ...item,
+        gridX: item.gridX + shiftX,
+        gridY: item.gridY + shiftY,
+      })));
+      if (selectedKey) {
+        const [selectedX, selectedY] = selectedKey.split(',').map(Number);
+        setSelectedKey(`${selectedX + shiftX},${selectedY + shiftY}`);
+      }
+    }
+    setHoverCell(null);
+  }
+
   function updateZoom(nextZoom) {
     setZoom(Math.max(0.6, Math.min(1.8, Number(nextZoom.toFixed(2)))));
   }
@@ -1053,6 +1168,30 @@ export default function RoomEditor() {
                   </button>
                 );
               })}
+              {[
+                { edgeX: -1, edgeY: -1, position: 'north-west', label: 'Resize room from top left' },
+                { edgeX: 0, edgeY: -1, position: 'north', label: 'Resize room from top edge' },
+                { edgeX: 1, edgeY: -1, position: 'north-east', label: 'Resize room from top right' },
+                { edgeX: 1, edgeY: 0, position: 'east', label: 'Resize room from right edge' },
+                { edgeX: 1, edgeY: 1, position: 'south-east', label: 'Resize room from bottom right' },
+                { edgeX: 0, edgeY: 1, position: 'south', label: 'Resize room from bottom edge' },
+                { edgeX: -1, edgeY: 1, position: 'south-west', label: 'Resize room from bottom left' },
+                { edgeX: -1, edgeY: 0, position: 'west', label: 'Resize room from left edge' },
+              ].map(({ edgeX, edgeY, position, label }) => (
+                <button
+                  key={position}
+                  type="button"
+                  className={`grid-resize-handle ${position}`}
+                  aria-label={label}
+                  title={label}
+                  onPointerDown={(event) => beginGridResize(event, edgeX, edgeY)}
+                  onPointerMove={resizeGridFromPointer}
+                  onPointerUp={endGridResize}
+                  onPointerCancel={endGridResize}
+                  onLostPointerCapture={endGridResize}
+                  onKeyDown={(event) => resizeGridFromKeyboard(event, edgeX, edgeY)}
+                />
+              ))}
             </div>
           </div>
         </main>
