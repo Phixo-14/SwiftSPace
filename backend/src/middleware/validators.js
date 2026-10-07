@@ -89,6 +89,26 @@ const roomSchema = Joi.object({
   }).required(),
   floorColor: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).default('#BCA17A'),
   gridColor: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).default('#8C7455'),
+  wallThicknessMm: Joi.number().integer().min(80).max(400).default(150),
+  architecturalSegments: Joi.array().max(300).items(Joi.object({
+    id: Joi.string().max(64).required(),
+    type: Joi.string().valid('wall', 'door', 'window').required(),
+    startX: Joi.number().min(0).max(50).required(),
+    startY: Joi.number().min(0).max(50).required(),
+    endX: Joi.number().min(0).max(50).required(),
+    endY: Joi.number().min(0).max(50).required(),
+  }).custom((segment, helpers) => {
+    const samePoint = segment.startX === segment.endX && segment.startY === segment.endY;
+    const diagonal = segment.startX !== segment.endX && segment.startY !== segment.endY;
+    if (samePoint || diagonal) return helpers.error('any.invalid');
+    return segment;
+  })).default([]),
+  roomLabels: Joi.array().max(100).items(Joi.object({
+    id: Joi.string().max(64).required(),
+    text: Joi.string().trim().min(1).max(40).required(),
+    x: Joi.number().min(0).max(50).required(),
+    y: Joi.number().min(0).max(50).required(),
+  })).default([]),
   placedItems: Joi.array().items(placedItemSchema).unique('placementId').default([]),
   overlapRecords: Joi.array().items(overlapRecordSchema).max(100).default([]),
 });

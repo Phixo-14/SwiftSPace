@@ -32,6 +32,29 @@ const RoomSchema = new mongoose.Schema(
     },
     floorColor: { type: String, default: '#BCA17A' },
     gridColor: { type: String, default: '#8C7455' },
+    wallThicknessMm: { type: Number, min: 80, max: 400, default: 150 },
+    architecturalSegments: {
+      type: [{
+        _id: false,
+        id: { type: String, required: true, maxlength: 64 },
+        type: { type: String, enum: ['wall', 'door', 'window'], required: true },
+        startX: { type: Number, required: true, min: 0, max: 50 },
+        startY: { type: Number, required: true, min: 0, max: 50 },
+        endX: { type: Number, required: true, min: 0, max: 50 },
+        endY: { type: Number, required: true, min: 0, max: 50 },
+      }],
+      default: [],
+    },
+    roomLabels: {
+      type: [{
+        _id: false,
+        id: { type: String, required: true, maxlength: 64 },
+        text: { type: String, required: true, trim: true, maxlength: 40 },
+        x: { type: Number, required: true, min: 0, max: 50 },
+        y: { type: Number, required: true, min: 0, max: 50 },
+      }],
+      default: [],
+    },
     placedItems: { type: [PlacedItemSchema], default: [] },
   },
   { timestamps: true }

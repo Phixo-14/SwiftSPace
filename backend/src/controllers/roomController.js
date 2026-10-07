@@ -6,6 +6,21 @@ const RoomVersion = require('../models/RoomVersion');
 const FurnitureRotationAdjustment = require('../models/FurnitureRotationAdjustment');
 const crypto = require('crypto');
 
+function canUseArchitecturalTools(user) {
+  return user?.role === 'interior-designer' || user?.role === 'admin';
+}
+
+function validateArchitecturalBounds(dimensions, segments, labels) {
+  const segmentOutsideRoom = segments.some((segment) => (
+    segment.startX > dimensions.width || segment.endX > dimensions.width
+    || segment.startY > dimensions.length || segment.endY > dimensions.length
+  ));
+  if (segmentOutsideRoom) return 'A wall, door, or window must stay inside the room boundary.';
+
+  const labelOutsideRoom = labels.some((label) => label.x >= dimensions.width || label.y >= dimensions.length);
+  return labelOutsideRoom ? 'Room labels must stay inside the room boundary.' : null;
+}
+
 async function getRoomExtras(roomId) {
   const [timer, placementErrors] = await Promise.all([
     RoomTimer.findOne({ roomId }).select('seconds').lean(),
@@ -122,15 +137,29 @@ async function getRoomById(req, res) {
     );
   }
   const extras = await getRoomExtras(room._id);
+  if (!canUseArchitecturalTools(req.user)) {
+    delete room.wallThicknessMm;
+    delete room.architecturalSegments;
+    delete room.roomLabels;
+  }
   res.json({ ...room, ...extras });
 }
 
 // POST /api/rooms
 async function createRoom(req, res) {
-  const { roomName, clientName, measurements, designNotes, timerSeconds, dimensions, floorColor, gridColor, placedItems, overlapRecords } = req.body;
+  const {
+    roomName, clientName, measurements, designNotes, timerSeconds, dimensions,
+    floorColor, gridColor, placedItems, overlapRecords, wallThicknessMm,
+    architecturalSegments, roomLabels,
+  } = req.body;
 
   const fitError = await assertItemsFitAndExist(dimensions, placedItems);
   if (fitError) return res.status(400).json({ message: fitError });
+  const designer = canUseArchitecturalTools(req.user);
+  if (designer) {
+    const architectureError = validateArchitecturalBounds(dimensions, architecturalSegments, roomLabels);
+    if (architectureError) return res.status(400).json({ message: architectureError });
+  }
 
   const room = await Room.create({
     userId: req.user.id,
@@ -141,6 +170,7 @@ async function createRoom(req, res) {
     dimensions,
     floorColor,
     gridColor,
+    ...(designer ? { wallThicknessMm, architecturalSegments, roomLabels } : {}),
     placedItems,
   });
   try {
@@ -148,7 +178,13 @@ async function createRoom(req, res) {
   } catch (error) {
     console.error(`Room extras save failed for ${room._id}:`, error);
   }
-  res.status(201).json({ ...room.toObject(), timerSeconds, overlapRecords });
+  const response = room.toObject();
+  if (!designer) {
+    delete response.wallThicknessMm;
+    delete response.architecturalSegments;
+    delete response.roomLabels;
+  }
+  res.status(201).json({ ...response, timerSeconds, overlapRecords });
 }
 
 // PUT /api/rooms/:id
@@ -159,9 +195,18 @@ async function updateRoom(req, res) {
     return res.status(403).json({ message: 'You do not have access to this room.' });
   }
 
-  const { roomName, clientName, measurements, designNotes, timerSeconds, dimensions, floorColor, gridColor, placedItems, overlapRecords } = req.body;
+  const {
+    roomName, clientName, measurements, designNotes, timerSeconds, dimensions,
+    floorColor, gridColor, placedItems, overlapRecords, wallThicknessMm,
+    architecturalSegments, roomLabels,
+  } = req.body;
   const fitError = await assertItemsFitAndExist(dimensions, placedItems);
   if (fitError) return res.status(400).json({ message: fitError });
+  const designer = canUseArchitecturalTools(req.user);
+  if (designer) {
+    const architectureError = validateArchitecturalBounds(dimensions, architecturalSegments, roomLabels);
+    if (architectureError) return res.status(400).json({ message: architectureError });
+  }
 
   const previousPlacements = new Map(room.placedItems.map((item) => [item.placementId, item]));
   const rotationAdjustments = placedItems.flatMap((item) => {
@@ -185,6 +230,11 @@ async function updateRoom(req, res) {
     room.dimensions = dimensions;
     room.floorColor = floorColor;
     room.gridColor = gridColor;
+    if (designer) {
+      room.wallThicknessMm = wallThicknessMm;
+      room.architecturalSegments = architecturalSegments;
+      room.roomLabels = roomLabels;
+    }
     room.placedItems = placedItems;
     await room.save();
     await saveRoomExtras(room._id, req.user.id, timerSeconds, overlapRecords);
@@ -195,7 +245,13 @@ async function updateRoom(req, res) {
         console.error(`Rotation adjustment logging failed for ${room._id}:`, error);
       }
     }
-    res.json({ ...room.toObject(), timerSeconds, overlapRecords });
+    const response = room.toObject();
+    if (!designer) {
+      delete response.wallThicknessMm;
+      delete response.architecturalSegments;
+      delete response.roomLabels;
+    }
+    res.json({ ...response, timerSeconds, overlapRecords });
   } catch (error) {
     console.error(`Room save failed for ${room._id}:`, error);
     res.status(500).json({ message: `Could not save room: ${error.message}` });
@@ -236,6 +292,9 @@ async function duplicateRoom(req, res) {
     dimensions: source.dimensions,
     floorColor: source.floorColor,
     gridColor: source.gridColor,
+    wallThicknessMm: source.wallThicknessMm,
+    architecturalSegments: source.architecturalSegments,
+    roomLabels: source.roomLabels,
     placedItems: source.placedItems,
   });
   res.status(201).json({ ...duplicate.toObject(), timerSeconds: 0, overlapRecords: [] });
@@ -267,6 +326,11 @@ async function getRoomVersion(req, res) {
     userId: req.user.id,
   }).select('_id name createdAt snapshot').lean();
   if (!version) return res.status(404).json({ message: 'Project version not found.' });
+  if (!canUseArchitecturalTools(req.user)) {
+    delete version.snapshot.wallThicknessMm;
+    delete version.snapshot.architecturalSegments;
+    delete version.snapshot.roomLabels;
+  }
   res.json(version);
 }
 
@@ -290,6 +354,11 @@ async function createRoomVersion(req, res) {
       dimensions: room.dimensions,
       floorColor: room.floorColor,
       gridColor: room.gridColor,
+      ...(canUseArchitecturalTools(req.user) ? {
+        wallThicknessMm: room.wallThicknessMm,
+        architecturalSegments: room.architecturalSegments,
+        roomLabels: room.roomLabels,
+      } : {}),
       placedItems: room.placedItems,
       timerSeconds: extras.timerSeconds,
       overlapRecords: extras.overlapRecords,
@@ -327,10 +396,21 @@ async function restoreRoomVersion(req, res) {
   room.dimensions = snapshot.dimensions;
   room.floorColor = snapshot.floorColor;
   room.gridColor = snapshot.gridColor;
+  if (canUseArchitecturalTools(req.user)) {
+    room.wallThicknessMm = snapshot.wallThicknessMm || 150;
+    room.architecturalSegments = snapshot.architecturalSegments || [];
+    room.roomLabels = snapshot.roomLabels || [];
+  }
   room.placedItems = snapshot.placedItems;
   await room.save();
   await saveRoomExtras(room._id, req.user.id, snapshot.timerSeconds, snapshot.overlapRecords);
-  res.json({ ...room.toObject(), timerSeconds: snapshot.timerSeconds, overlapRecords: snapshot.overlapRecords });
+  const response = room.toObject();
+  if (!canUseArchitecturalTools(req.user)) {
+    delete response.wallThicknessMm;
+    delete response.architecturalSegments;
+    delete response.roomLabels;
+  }
+  res.json({ ...response, timerSeconds: snapshot.timerSeconds, overlapRecords: snapshot.overlapRecords });
 }
 
 async function createShareLink(req, res) {

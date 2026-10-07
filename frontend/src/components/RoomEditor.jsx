@@ -20,6 +20,14 @@ const FURNITURE_CATEGORIES = [
   { value: 'lighting', label: 'Lighting', icon: '💡' },
   { value: 'surface', label: 'Tables & Surfaces', icon: '▱' },
 ];
+const ARCHITECTURAL_TOOLS = [
+  { value: 'select', label: 'Select' },
+  { value: 'wall', label: 'Wall' },
+  { value: 'door', label: 'Door' },
+  { value: 'window', label: 'Window' },
+  { value: 'label', label: 'Room label' },
+  { value: 'erase', label: 'Erase' },
+];
 
 function readDraft(key) {
   try {
@@ -33,6 +41,16 @@ function readDraft(key) {
 function createPlacementId() {
   return globalThis.crypto?.randomUUID?.()
     || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function distanceToSegment(point, segment) {
+  const deltaX = segment.endX - segment.startX;
+  const deltaY = segment.endY - segment.startY;
+  const lengthSquared = deltaX * deltaX + deltaY * deltaY;
+  const progress = lengthSquared
+    ? Math.max(0, Math.min(1, ((point.x - segment.startX) * deltaX + (point.y - segment.startY) * deltaY) / lengthSquared))
+    : 0;
+  return Math.hypot(point.x - segment.startX - progress * deltaX, point.y - segment.startY - progress * deltaY);
 }
 
 export default function RoomEditor() {
@@ -56,6 +74,12 @@ export default function RoomEditor() {
   const [dimensions, setDimensions] = useState(storedDraft?.dimensions || DEFAULT_DIMENSIONS);
   const [floorColor, setFloorColor] = useState(storedDraft?.floorColor || FLOOR_OPTIONS[0].floor);
   const [gridColor, setGridColor] = useState(storedDraft?.gridColor || FLOOR_OPTIONS[0].grid);
+  const [wallThicknessMm, setWallThicknessMm] = useState(storedDraft?.wallThicknessMm || 150);
+  const [architecturalSegments, setArchitecturalSegments] = useState(storedDraft?.architecturalSegments || []);
+  const [roomLabels, setRoomLabels] = useState(storedDraft?.roomLabels || []);
+  const [architecturalTool, setArchitecturalTool] = useState('select');
+  const [pendingArchitectPoint, setPendingArchitectPoint] = useState(null);
+  const [roomLabelText, setRoomLabelText] = useState('ROOM');
   const [workspaceColor, setWorkspaceColor] = useState(() => {
     const draftFloor = FLOOR_OPTIONS.find((option) => option.floor === storedDraft?.floorColor);
     return draftFloor?.workspace || FLOOR_OPTIONS[0].workspace;
@@ -103,6 +127,9 @@ export default function RoomEditor() {
       dimensions,
       floorColor,
       gridColor,
+      wallThicknessMm,
+      architecturalSegments,
+      roomLabels,
       placedItems: snapshotPlacedItems,
       overlapRecords,
     });
@@ -117,6 +144,9 @@ export default function RoomEditor() {
     setDimensions(snapshot.dimensions);
     setFloorColor(snapshot.floorColor);
     setGridColor(snapshot.gridColor);
+    setWallThicknessMm(snapshot.wallThicknessMm || 150);
+    setArchitecturalSegments(snapshot.architecturalSegments || []);
+    setRoomLabels(snapshot.roomLabels || []);
     const floorOption = FLOOR_OPTIONS.find((option) => option.floor === snapshot.floorColor);
     setWorkspaceColor(floorOption?.workspace || FLOOR_OPTIONS[0].workspace);
     setPlacedItems(snapshot.placedItems);
@@ -167,6 +197,11 @@ export default function RoomEditor() {
         setDimensions(draft.dimensions || DEFAULT_DIMENSIONS);
         setFloorColor(draft.floorColor || FLOOR_OPTIONS[0].floor);
         setGridColor(draft.gridColor || FLOOR_OPTIONS[0].grid);
+        if (isDesigner) {
+          setWallThicknessMm(draft.wallThicknessMm || 150);
+          setArchitecturalSegments(draft.architecturalSegments || []);
+          setRoomLabels(draft.roomLabels || []);
+        }
         const draftFloor = FLOOR_OPTIONS.find((option) => option.floor === draft.floorColor);
         setWorkspaceColor(draftFloor?.workspace || FLOOR_OPTIONS[0].workspace);
         setPlacedItems((draft.placedItems || []).map((item) => ({
@@ -206,6 +241,9 @@ export default function RoomEditor() {
           setDimensions(roomRes.data.dimensions);
           setFloorColor(roomRes.data.floorColor || FLOOR_OPTIONS[0].floor);
           setGridColor(roomRes.data.gridColor || FLOOR_OPTIONS[0].grid);
+          setWallThicknessMm(roomRes.data.wallThicknessMm || 150);
+          setArchitecturalSegments(roomRes.data.architecturalSegments || []);
+          setRoomLabels(roomRes.data.roomLabels || []);
           const savedFloor = FLOOR_OPTIONS.find((option) => option.floor === roomRes.data.floorColor);
           setWorkspaceColor(savedFloor?.workspace || FLOOR_OPTIONS[0].workspace);
           setPlacedItems(validPlacedItems);
@@ -260,10 +298,11 @@ export default function RoomEditor() {
       dimensions,
       floorColor,
       gridColor,
+      ...(isDesigner ? { wallThicknessMm, architecturalSegments, roomLabels } : {}),
       placedItems,
       overlapRecords,
     }));
-  }, [clientName, designNotes, dimensions, draftReady, draftStorageKey, floorColor, gridColor, loading, measurements, overlapRecords, placedItems, roomName, timerSeconds]);
+  }, [architecturalSegments, clientName, designNotes, dimensions, draftReady, draftStorageKey, floorColor, gridColor, isDesigner, loading, measurements, overlapRecords, placedItems, roomLabels, roomName, timerSeconds, wallThicknessMm]);
 
   useEffect(() => {
     if (loading || !draftReady) return;
@@ -295,7 +334,7 @@ export default function RoomEditor() {
     history.future = [];
     setCanUndo(true);
     setCanRedo(false);
-  }, [clientName, designNotes, dimensions, draftReady, floorColor, gridColor, id, loading, measurements, overlapRecords, placedItems, roomName]);
+  }, [architecturalSegments, clientName, designNotes, dimensions, draftReady, floorColor, gridColor, id, loading, measurements, overlapRecords, placedItems, roomLabels, roomName, wallThicknessMm]);
 
   useEffect(() => {
     if (loading || !draftReady) return undefined;
@@ -461,8 +500,85 @@ export default function RoomEditor() {
     ].slice(-100));
   }
 
+  function handleArchitecturalCellClick(x, y) {
+    const point = { x: x + 0.5, y: y + 0.5 };
+    setSelectedKey(null);
+    setArmedItemId(null);
+
+    if (architecturalTool === 'label') {
+      if (roomLabels.length >= 100) {
+        setStatus('A project can contain up to 100 room labels.');
+        return;
+      }
+      const text = roomLabelText.trim().toUpperCase();
+      if (!text) {
+        setStatus('Enter a room label before placing it.');
+        return;
+      }
+      setRoomLabels((current) => [...current, { id: createPlacementId(), text, ...point }]);
+      setStatus(`${text} label added.`);
+      return;
+    }
+
+    if (architecturalTool === 'erase') {
+      const segmentDistances = architecturalSegments.map((segment) => distanceToSegment(point, segment));
+      const labelDistances = roomLabels.map((label) => Math.hypot(point.x - label.x, point.y - label.y));
+      const nearestSegment = Math.min(...segmentDistances, Infinity);
+      const nearestLabel = Math.min(...labelDistances, Infinity);
+      if (Math.min(nearestSegment, nearestLabel) > 0.9) {
+        setStatus('Select a wall, opening, or label to remove.');
+      } else if (nearestSegment <= nearestLabel) {
+        const removeIndex = segmentDistances.indexOf(nearestSegment);
+        setArchitecturalSegments((current) => current.filter((_, index) => index !== removeIndex));
+        setStatus('Plan element removed.');
+      } else {
+        const removeIndex = labelDistances.indexOf(nearestLabel);
+        setRoomLabels((current) => current.filter((_, index) => index !== removeIndex));
+        setStatus('Room label removed.');
+      }
+      setPendingArchitectPoint(null);
+      return;
+    }
+
+    if (architecturalTool !== 'erase' && !pendingArchitectPoint && architecturalSegments.length >= 300) {
+      setStatus('A project can contain up to 300 walls, doors, and windows.');
+      return;
+    }
+
+    if (!pendingArchitectPoint) {
+      setPendingArchitectPoint(point);
+      setStatus(`Choose an endpoint for the ${architecturalTool}.`);
+      return;
+    }
+
+    const deltaX = point.x - pendingArchitectPoint.x;
+    const deltaY = point.y - pendingArchitectPoint.y;
+    const endPoint = Math.abs(deltaX) >= Math.abs(deltaY)
+      ? { x: point.x, y: pendingArchitectPoint.y }
+      : { x: pendingArchitectPoint.x, y: point.y };
+    if (endPoint.x === pendingArchitectPoint.x && endPoint.y === pendingArchitectPoint.y) {
+      setStatus('Choose a different endpoint.');
+      return;
+    }
+
+    setArchitecturalSegments((current) => [...current, {
+      id: createPlacementId(),
+      type: architecturalTool,
+      startX: pendingArchitectPoint.x,
+      startY: pendingArchitectPoint.y,
+      endX: endPoint.x,
+      endY: endPoint.y,
+    }]);
+    setPendingArchitectPoint(null);
+    setStatus(`${architecturalTool[0].toUpperCase()}${architecturalTool.slice(1)} added.`);
+  }
+
   const handleCellClick = useCallback(
     (x, y) => {
+      if (isDesigner && architecturalTool !== 'select') {
+        handleArchitecturalCellClick(x, y);
+        return;
+      }
       const key = `${x},${y}`;
       const existing = itemsByCell.get(key);
 
@@ -501,7 +617,7 @@ export default function RoomEditor() {
         setSelectedKey(null);
       }
     },
-    [armedItemId, catalogById, dimensions, itemsByCell]
+    [architecturalSegments, architecturalTool, isDesigner, pendingArchitectPoint, roomLabels, roomLabelText, armedItemId, catalogById, dimensions, itemsByCell]
   );
 
   function setItemRotation(nextRotation) {
@@ -650,6 +766,7 @@ export default function RoomEditor() {
       dimensions,
       floorColor,
       gridColor,
+      ...(isDesigner ? { wallThicknessMm, architecturalSegments, roomLabels } : {}),
       placedItems: validPlacedItems,
       overlapRecords,
     };
@@ -923,6 +1040,17 @@ export default function RoomEditor() {
       cells.push({ x, y });
     }
   }
+  const millimetresPerUnit = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8 }[measurements.unit] || 304.8;
+  const measuredCellSizes = [
+    Number(measurements.width) > 0 ? (Number(measurements.width) * millimetresPerUnit) / dimensions.width : null,
+    Number(measurements.length) > 0 ? (Number(measurements.length) * millimetresPerUnit) / dimensions.length : null,
+  ].filter(Boolean);
+  const averageCellMm = measuredCellSizes.length
+    ? measuredCellSizes.reduce((total, size) => total + size, 0) / measuredCellSizes.length
+    : null;
+  const wallStrokeWidth = Math.max(2.5, Math.min(14, averageCellMm
+    ? (wallThicknessMm * 43) / averageCellMm
+    : wallThicknessMm / 35));
 
   if (loading) {
     return (
@@ -958,10 +1086,47 @@ export default function RoomEditor() {
       </header>
 
       <div
-        className="editor-body"
+        className={`editor-body${isDesigner ? ' designer-editor-body' : ''}`}
         style={{ '--floor-color': floorColor, '--workspace-color': workspaceColor }}
       >
         <aside className="catalog-panel">
+          {isDesigner && (
+            <section className="architect-tools">
+              <h2 className="catalog-section-title">Architecture</h2>
+              <div className="architect-tool-grid" role="group" aria-label="Architectural drawing tools">
+                {ARCHITECTURAL_TOOLS.map((tool) => (
+                  <button
+                    className={`architect-tool ${architecturalTool === tool.value ? 'active' : ''}`}
+                    type="button"
+                    key={tool.value}
+                    aria-pressed={architecturalTool === tool.value}
+                    onClick={() => {
+                      setArchitecturalTool(tool.value);
+                      setPendingArchitectPoint(null);
+                      setArmedItemId(null);
+                    }}
+                  >
+                    {tool.label}
+                  </button>
+                ))}
+              </div>
+              <label className="inspector-field architect-thickness">
+                Wall thickness
+                <select value={wallThicknessMm} onChange={(event) => setWallThicknessMm(Number(event.target.value))}>
+                  {[100, 125, 150, 200, 250, 300].map((thickness) => (
+                    <option value={thickness} key={thickness}>{thickness} mm</option>
+                  ))}
+                </select>
+              </label>
+              {architecturalTool === 'label' && (
+                <label className="inspector-field architect-label-input">
+                  Room label
+                  <input value={roomLabelText} maxLength={40} onChange={(event) => setRoomLabelText(event.target.value.toUpperCase())} />
+                </label>
+              )}
+              {pendingArchitectPoint && <p className="architect-tool-hint">Select the endpoint on the plan.</p>}
+            </section>
+          )}
           <section className="catalog-section furniture-section">
             <h2 className="catalog-section-title">Furniture</h2>
             {selectedCategory ? (
@@ -1062,7 +1227,7 @@ export default function RoomEditor() {
           {hoverError && <div className="placement-warning">{hoverError}</div>}
           <div className="workspace-zoom" style={{ transform: `scale(${zoom * fitZoom}) rotate(${platformRotation}deg)` }}>
             <div
-              className="iso-grid"
+              className={`iso-grid${isDesigner ? ' architectural-grid' : ''}`}
               style={{
                 '--cols': dimensions.width,
                 '--rows': dimensions.length,
@@ -1098,6 +1263,75 @@ export default function RoomEditor() {
                   />
                 );
               })}
+              {isDesigner && (
+                <svg
+                  className="architectural-overlay"
+                  viewBox={`0 0 ${dimensions.width * 43 + 2} ${dimensions.length * 43 + 2}`}
+                  aria-label="Architectural walls, doors, windows, and room labels"
+                >
+                  {architecturalSegments.map((segment) => {
+                    const startX = segment.startX * 43 + 1;
+                    const startY = segment.startY * 43 + 1;
+                    const endX = segment.endX * 43 + 1;
+                    const endY = segment.endY * 43 + 1;
+                    const segmentLength = Math.hypot(endX - startX, endY - startY);
+                    const isHorizontal = startY === endY;
+                    const swingX = isHorizontal ? startX : startX + segmentLength;
+                    const swingY = isHorizontal ? startY + segmentLength : startY;
+                    const swingPath = `M ${endX} ${endY} A ${segmentLength} ${segmentLength} 0 0 1 ${swingX} ${swingY}`;
+                    const doorLeaf = `M ${startX} ${startY} L ${swingX} ${swingY}`;
+                    const windowOffset = wallStrokeWidth * 0.62;
+                    return (
+                      <g key={segment.id}>
+                        {segment.type === 'wall' && (
+                          <line x1={startX} y1={startY} x2={endX} y2={endY} stroke="#202722" strokeWidth={wallStrokeWidth} strokeLinecap="square" />
+                        )}
+                        {segment.type === 'door' && (
+                          <>
+                            <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={floorColor} strokeWidth={wallStrokeWidth + 2} />
+                            <path d={`${swingPath} ${doorLeaf}`} fill="none" stroke="#202722" strokeWidth="1.7" />
+                          </>
+                        )}
+                        {segment.type === 'window' && (
+                          <>
+                            <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={floorColor} strokeWidth={wallStrokeWidth + 2} />
+                            <line
+                              x1={startX + (isHorizontal ? 0 : -windowOffset)}
+                              y1={startY + (isHorizontal ? -windowOffset : 0)}
+                              x2={endX + (isHorizontal ? 0 : -windowOffset)}
+                              y2={endY + (isHorizontal ? -windowOffset : 0)}
+                              stroke="#247e92"
+                              strokeWidth="1.8"
+                            />
+                            <line
+                              x1={startX + (isHorizontal ? 0 : windowOffset)}
+                              y1={startY + (isHorizontal ? windowOffset : 0)}
+                              x2={endX + (isHorizontal ? 0 : windowOffset)}
+                              y2={endY + (isHorizontal ? windowOffset : 0)}
+                              stroke="#247e92"
+                              strokeWidth="1.8"
+                            />
+                          </>
+                        )}
+                      </g>
+                    );
+                  })}
+                  {roomLabels.map((label) => {
+                    const x = label.x * 43 + 1;
+                    const y = label.y * 43 + 1;
+                    const labelWidth = Math.max(38, label.text.length * 6.5 + 12);
+                    return (
+                      <g key={label.id} transform={`translate(${x} ${y})`}>
+                        <rect x={-labelWidth / 2} y="-11" width={labelWidth} height="22" rx="2" fill="#fbfaf6" fillOpacity="0.92" />
+                        <text className="architectural-room-label" textAnchor="middle" dominantBaseline="middle">{label.text}</text>
+                      </g>
+                    );
+                  })}
+                  {pendingArchitectPoint && (
+                    <circle cx={pendingArchitectPoint.x * 43 + 1} cy={pendingArchitectPoint.y * 43 + 1} r="5" fill="#c2693c" stroke="#fff" strokeWidth="1.5" />
+                  )}
+                </svg>
+              )}
               {previewItem && (
                 <div
                   key={`preview-${previewItem.gridX}-${previewItem.gridY}-${previewItem.catalogItem._id}`}
@@ -1438,6 +1672,7 @@ export default function RoomEditor() {
             <div className="version-preview-meta">
               <span>{versionPreview.snapshot.dimensions.width} × {versionPreview.snapshot.dimensions.length} grid</span>
               <span>{versionPreview.snapshot.placedItems.length} furniture item(s)</span>
+              {versionPreview.snapshot.wallThicknessMm && <span>Walls {versionPreview.snapshot.wallThicknessMm} mm</span>}
               {versionPreview.snapshot.clientName && <span>Client: {versionPreview.snapshot.clientName}</span>}
             </div>
             <div className="version-preview-stage">
@@ -1458,6 +1693,43 @@ export default function RoomEditor() {
                     style={{ gridColumn: (index % versionPreview.snapshot.dimensions.width) + 1, gridRow: Math.floor(index / versionPreview.snapshot.dimensions.width) + 1 }}
                   />
                 ))}
+                <svg
+                  className="version-architecture-overlay"
+                  viewBox={`0 0 ${versionPreview.snapshot.dimensions.width * 25 + 2} ${versionPreview.snapshot.dimensions.length * 25 + 2}`}
+                  aria-hidden="true"
+                >
+                  {(versionPreview.snapshot.architecturalSegments || []).map((segment) => {
+                    const startX = segment.startX * 25 + 1;
+                    const startY = segment.startY * 25 + 1;
+                    const endX = segment.endX * 25 + 1;
+                    const endY = segment.endY * 25 + 1;
+                    const thickness = Math.max(2, Math.min(7, (versionPreview.snapshot.wallThicknessMm || 150) / 45));
+                    const isHorizontal = startY === endY;
+                    const segmentLength = Math.hypot(endX - startX, endY - startY);
+                    const swingX = isHorizontal ? startX : startX + segmentLength;
+                    const swingY = isHorizontal ? startY + segmentLength : startY;
+                    const windowOffset = thickness * 0.6;
+                    if (segment.type === 'wall') {
+                      return <line key={segment.id} x1={startX} y1={startY} x2={endX} y2={endY} stroke="#202722" strokeWidth={thickness} strokeLinecap="square" />;
+                    }
+                    return (
+                      <g key={segment.id}>
+                        <line x1={startX} y1={startY} x2={endX} y2={endY} stroke="#fbfaf6" strokeWidth={thickness + 2} />
+                        {segment.type === 'window' ? (
+                          <>
+                            <line x1={startX + (isHorizontal ? 0 : -windowOffset)} y1={startY + (isHorizontal ? -windowOffset : 0)} x2={endX + (isHorizontal ? 0 : -windowOffset)} y2={endY + (isHorizontal ? -windowOffset : 0)} stroke="#247e92" strokeWidth="1.5" />
+                            <line x1={startX + (isHorizontal ? 0 : windowOffset)} y1={startY + (isHorizontal ? windowOffset : 0)} x2={endX + (isHorizontal ? 0 : windowOffset)} y2={endY + (isHorizontal ? windowOffset : 0)} stroke="#247e92" strokeWidth="1.5" />
+                          </>
+                        ) : (
+                          <path d={`M ${endX} ${endY} A ${segmentLength} ${segmentLength} 0 0 1 ${swingX} ${swingY} M ${startX} ${startY} L ${swingX} ${swingY}`} fill="none" stroke="#202722" strokeWidth="1.5" />
+                        )}
+                      </g>
+                    );
+                  })}
+                  {(versionPreview.snapshot.roomLabels || []).map((label) => (
+                    <text key={label.id} x={label.x * 25 + 1} y={label.y * 25 + 1} textAnchor="middle" dominantBaseline="middle" fill="#28312c" fontSize="5" fontWeight="700">{label.text}</text>
+                  ))}
+                </svg>
                 {versionPreview.snapshot.placedItems.map((item, index) => {
                   const catalogItem = catalogById.get(item.catalogItemId?.toString());
                   if (!catalogItem) return null;
