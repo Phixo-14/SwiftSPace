@@ -795,21 +795,29 @@ export default function RoomEditor() {
     if (!isDesigner) return;
 
     if (architecturalTool === 'select') {
-      const target = event.target.closest?.('[data-architecture-kind]');
-      if (!target) return;
-      const kind = target.dataset.architectureKind;
-      const id = target.dataset.architectureId;
-      const element = kind === 'segment'
-        ? architecturalSegments.find((segment) => segment.id === id)
-        : roomLabels.find((label) => label.id === id);
-      const svg = target.ownerSVGElement;
-      const pointerStart = getArchitecturalPoint(svg, event.clientX, event.clientY);
-      if (!element || !pointerStart) return;
+      const svg = event.currentTarget.querySelector('.architectural-overlay');
+      const planPoint = getArchitecturalPoint(svg, event.clientX, event.clientY);
+      if (!planPoint) return;
+
+      const segmentHits = architecturalSegments.map((segment) => ({
+        kind: 'segment',
+        element: segment,
+        distance: distanceToSegment(planPoint, segment),
+      }));
+      const labelHits = roomLabels.map((label) => ({
+        kind: 'label',
+        element: label,
+        distance: Math.hypot(planPoint.x - label.x, planPoint.y - label.y),
+      }));
+      const closest = [...segmentHits, ...labelHits].sort((first, second) => first.distance - second.distance)[0];
+      if (!closest || closest.distance > 0.38) return;
+      const { kind, element } = closest;
+      const id = element.id;
 
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
       architecturalDragRef.current = {
-        mode: 'move', pointerId: event.pointerId, kind, id, element, svg, pointerStart, delta: { x: 0, y: 0 },
+        mode: 'move', pointerId: event.pointerId, kind, id, element, svg, pointerStart: planPoint, delta: { x: 0, y: 0 },
       };
       suppressGridClickRef.current = true;
       setArchitecturalDragDelta({ x: 0, y: 0 });
