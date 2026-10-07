@@ -1941,7 +1941,7 @@ export default function RoomEditor() {
                 <span className="overlap-count">{overlapRecords.length}</span>
               </div>
               <div className="overlap-record-list">
-                {overlapRecords.slice(-5).reverse().map((record, index) => {
+                {overlapRecords.slice().reverse().map((record, index) => {
                   const catalogItem = catalogById.get(record.catalogItemId?.toString());
                   return (
                     <div className="overlap-record" key={`${record.occurredAt}-${index}`}>

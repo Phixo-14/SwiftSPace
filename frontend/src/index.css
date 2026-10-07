@@ -2308,6 +2308,10 @@ a {
 .overlap-record-list {
   display: grid;
   gap: 0.45rem;
+  max-height: min(34vh, 280px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.25rem;
 }
 
 .overlap-record {
