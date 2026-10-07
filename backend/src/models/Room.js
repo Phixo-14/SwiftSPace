@@ -52,6 +52,7 @@ const RoomSchema = new mongoose.Schema(
         text: { type: String, required: true, trim: true, maxlength: 40 },
         x: { type: Number, required: true, min: 0, max: 50 },
         y: { type: Number, required: true, min: 0, max: 50 },
+        rotation: { type: Number, enum: [0, 90, 180, 270], default: 0 },
       }],
       default: [],
     },

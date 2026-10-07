@@ -447,12 +447,6 @@ export default function RoomEditor() {
   }, [placedItems, catalogById]);
 
   const selectedItem = selectedKey ? itemsByCell.get(selectedKey) : null;
-  const selectedArchitectureSegment = selectedArchitecturalElement?.kind === 'segment'
-    ? architecturalSegments.find((segment) => segment.id === selectedArchitecturalElement.id)
-    : null;
-  const selectedArchitectureLabel = selectedArchitecturalElement?.kind === 'label'
-    ? roomLabels.find((label) => label.id === selectedArchitecturalElement.id)
-    : null;
 
   const previewItem = useMemo(() => {
     if (!hoverCell) return null;
@@ -535,7 +529,7 @@ export default function RoomEditor() {
         setStatus('Enter a room label before placing it.');
         return;
       }
-      const label = { id: createPlacementId(), text, ...point };
+      const label = { id: createPlacementId(), text, ...point, rotation: 0 };
       setRoomLabels((current) => [...current, label]);
       setSelectedArchitecturalElement({ kind: 'label', id: label.id });
       setArchitecturalTool('select');
@@ -962,10 +956,45 @@ export default function RoomEditor() {
     setStatus('Plan element removed.');
   }
 
-  function removeSelectedArchitecturalElement() {
-    if (selectedArchitecturalElement) {
-      removeArchitecturalElement(selectedArchitecturalElement.kind, selectedArchitecturalElement.id);
+  function rotateArchitecturalElement(kind, id) {
+    if (kind === 'label') {
+      setRoomLabels((current) => current.map((label) => label.id === id
+        ? { ...label, rotation: ((label.rotation || 0) + 90) % 360 }
+        : label));
+      setStatus('Room label rotated 90°.');
+      return;
     }
+
+    const segment = architecturalSegments.find((item) => item.id === id);
+    if (!segment) return;
+    const centerX = (segment.startX + segment.endX) / 2;
+    const centerY = (segment.startY + segment.endY) / 2;
+    const rotatePoint = (x, y) => ({
+      x: centerX - (y - centerY),
+      y: centerY + (x - centerX),
+    });
+    const start = rotatePoint(segment.startX, segment.startY);
+    const end = rotatePoint(segment.endX, segment.endY);
+    const minX = Math.min(start.x, end.x);
+    const maxX = Math.max(start.x, end.x);
+    const minY = Math.min(start.y, end.y);
+    const maxY = Math.max(start.y, end.y);
+    const shiftX = minX < 0.5 ? 0.5 - minX : maxX > dimensions.width - 0.5 ? dimensions.width - 0.5 - maxX : 0;
+    const shiftY = minY < 0.5 ? 0.5 - minY : maxY > dimensions.length - 0.5 ? dimensions.length - 0.5 - maxY : 0;
+    if (minX + shiftX < 0.5 || maxX + shiftX > dimensions.width - 0.5
+      || minY + shiftY < 0.5 || maxY + shiftY > dimensions.length - 0.5) {
+      setStatus('This element is too long to rotate within the room.');
+      return;
+    }
+
+    setArchitecturalSegments((current) => current.map((item) => item.id === id ? {
+      ...item,
+      startX: start.x + shiftX,
+      startY: start.y + shiftY,
+      endX: end.x + shiftX,
+      endY: end.y + shiftY,
+    } : item));
+    setStatus(`${segment.type[0].toUpperCase()}${segment.type.slice(1)} rotated 90°.`);
   }
 
   function removeItem(itemToRemove) {
@@ -1615,7 +1644,7 @@ export default function RoomEditor() {
                         key={label.id}
                         data-architecture-kind="label"
                         data-architecture-id={label.id}
-                        transform={`translate(${x + (isBeingDragged ? architecturalDragDelta.x * 43 : 0)} ${y + (isBeingDragged ? architecturalDragDelta.y * 43 : 0)})`}
+                        transform={`translate(${x + (isBeingDragged ? architecturalDragDelta.x * 43 : 0)} ${y + (isBeingDragged ? architecturalDragDelta.y * 43 : 0)}) rotate(${label.rotation || 0})`}
                         pointerEvents={architecturalTool === 'select' ? 'visiblePainted' : 'none'}
                         style={{ cursor: architecturalTool === 'select' ? 'pointer' : 'default' }}
                         onClick={(event) => {
@@ -1903,6 +1932,15 @@ export default function RoomEditor() {
                       <span className="mono muted small">({item.gridX}, {item.gridY})</span>
                     </button>
                     <button
+                      className="btn-ghost placed-item-remove"
+                      type="button"
+                      onClick={() => rotateArchitecturalElement('segment', segment.id)}
+                      aria-label={`Rotate ${type.toLowerCase()} 90 degrees`}
+                      title="Rotate 90 degrees clockwise"
+                    >
+                      Rotate
+                    </button>
+                    <button
                       className="btn-ghost danger placed-item-remove"
                       type="button"
                       onClick={() => removeItem(item)}
@@ -1967,7 +2005,16 @@ export default function RoomEditor() {
                       }}
                     >
                       {label.text}
-                      <span className="mono muted small">Room label · ({label.x}, {label.y})</span>
+                      <span className="mono muted small">Room label · ({label.x}, {label.y}) · {label.rotation || 0}°</span>
+                    </button>
+                    <button
+                      className="btn-ghost placed-item-remove"
+                      type="button"
+                      onClick={() => rotateArchitecturalElement('label', label.id)}
+                      aria-label={`Rotate ${label.text} label 90 degrees`}
+                      title="Rotate 90 degrees clockwise"
+                    >
+                      Rotate
                     </button>
                     <button
                       className="btn-ghost danger placed-item-remove"
@@ -1988,27 +2035,8 @@ export default function RoomEditor() {
 
           <div className="divider" />
 
-          <p className="panel-heading">{selectedArchitectureSegment || selectedArchitectureLabel ? 'Selected plan element' : 'Selected item'}</p>
-          {isDesigner && (selectedArchitectureSegment || selectedArchitectureLabel) ? (
-            <div className="inspector-selected">
-              <p className="selected-name">
-                {selectedArchitectureSegment
-                  ? `${selectedArchitectureSegment.type[0].toUpperCase()}${selectedArchitectureSegment.type.slice(1)}`
-                  : selectedArchitectureLabel.text}
-              </p>
-              <p className="mono muted small">
-                {selectedArchitectureSegment
-                  ? `(${selectedArchitectureSegment.startX}, ${selectedArchitectureSegment.startY}) to (${selectedArchitectureSegment.endX}, ${selectedArchitectureSegment.endY})`
-                  : `Room label at (${selectedArchitectureLabel.x}, ${selectedArchitectureLabel.y})`}
-              </p>
-              {selectedArchitectureSegment?.type === 'wall' && (
-                <p className="mono muted small">Wall thickness · {wallThicknessMm} mm</p>
-              )}
-              <div className="inspector-actions">
-                <button className="btn-ghost danger" type="button" onClick={removeSelectedArchitecturalElement}>Remove</button>
-              </div>
-            </div>
-          ) : selectedItem && catalogById.get(selectedItem.catalogItemId) ? (
+          <p className="panel-heading">Selected item</p>
+          {selectedItem && catalogById.get(selectedItem.catalogItemId) ? (
             <div className="inspector-selected">
               <p className="selected-name">{catalogById.get(selectedItem.catalogItemId).name}</p>
               <p className="mono muted small">
@@ -2136,7 +2164,19 @@ export default function RoomEditor() {
                     );
                   })}
                   {(versionPreview.snapshot.roomLabels || []).map((label) => (
-                    <text key={label.id} x={label.x * 25 + 1} y={label.y * 25 + 1} textAnchor="middle" dominantBaseline="middle" fill="#28312c" fontSize="5" fontWeight="700">{label.text}</text>
+                    <text
+                      key={label.id}
+                      x={label.x * 25 + 1}
+                      y={label.y * 25 + 1}
+                      transform={`rotate(${label.rotation || 0} ${label.x * 25 + 1} ${label.y * 25 + 1})`}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fill="#28312c"
+                      fontSize="5"
+                      fontWeight="700"
+                    >
+                      {label.text}
+                    </text>
                   ))}
                 </svg>
                 {versionPreview.snapshot.placedItems.map((item, index) => {

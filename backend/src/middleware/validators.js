@@ -108,6 +108,7 @@ const roomSchema = Joi.object({
     text: Joi.string().trim().min(1).max(40).required(),
     x: Joi.number().min(0).max(50).required(),
     y: Joi.number().min(0).max(50).required(),
+    rotation: Joi.number().valid(0, 90, 180, 270).default(0),
   })).default([]),
   placedItems: Joi.array().items(placedItemSchema).unique('placementId').default([]),
   overlapRecords: Joi.array().items(overlapRecordSchema).max(100).default([]),
