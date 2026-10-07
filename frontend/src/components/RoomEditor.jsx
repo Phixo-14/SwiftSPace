@@ -942,15 +942,22 @@ export default function RoomEditor() {
     removeItem(selectedItem);
   }
 
-  function removeSelectedArchitecturalElement() {
-    if (!selectedArchitecturalElement) return;
-    if (selectedArchitecturalElement.kind === 'segment') {
-      setArchitecturalSegments((current) => current.filter((segment) => segment.id !== selectedArchitecturalElement.id));
+  function removeArchitecturalElement(kind, id) {
+    if (kind === 'segment') {
+      setArchitecturalSegments((current) => current.filter((segment) => segment.id !== id));
     } else {
-      setRoomLabels((current) => current.filter((label) => label.id !== selectedArchitecturalElement.id));
+      setRoomLabels((current) => current.filter((label) => label.id !== id));
     }
-    setSelectedArchitecturalElement(null);
+    if (selectedArchitecturalElement?.kind === kind && selectedArchitecturalElement.id === id) {
+      setSelectedArchitecturalElement(null);
+    }
     setStatus('Plan element removed.');
+  }
+
+  function removeSelectedArchitecturalElement() {
+    if (selectedArchitecturalElement) {
+      removeArchitecturalElement(selectedArchitecturalElement.kind, selectedArchitecturalElement.id);
+    }
   }
 
   function removeItem(itemToRemove) {
@@ -1897,6 +1904,76 @@ export default function RoomEditor() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {isDesigner && (
+            <div className="placed-items-list">
+              <p className="panel-heading">Placed architecture · {architecturalSegments.length + roomLabels.length}</p>
+              {architecturalSegments.map((segment) => {
+                const isSelected = selectedArchitecturalElement?.kind === 'segment'
+                  && selectedArchitecturalElement.id === segment.id;
+                const type = `${segment.type[0].toUpperCase()}${segment.type.slice(1)}`;
+                return (
+                  <div className="placed-item-row" key={`segment-${segment.id}`}>
+                    <button
+                      className={`placed-item-name ${isSelected ? 'selected' : ''}`}
+                      type="button"
+                      onClick={() => {
+                        setArchitecturalTool('select');
+                        setPendingArchitectPoint(null);
+                        setSelectedArchitecturalElement({ kind: 'segment', id: segment.id });
+                        setSelectedKey(null);
+                        setArmedItemId(null);
+                      }}
+                    >
+                      {type}
+                      <span className="mono muted small">({segment.startX}, {segment.startY}) to ({segment.endX}, {segment.endY})</span>
+                    </button>
+                    <button
+                      className="btn-ghost danger placed-item-remove"
+                      type="button"
+                      onClick={() => removeArchitecturalElement('segment', segment.id)}
+                      aria-label={`Remove ${type.toLowerCase()}`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                );
+              })}
+              {roomLabels.map((label) => {
+                const isSelected = selectedArchitecturalElement?.kind === 'label'
+                  && selectedArchitecturalElement.id === label.id;
+                return (
+                  <div className="placed-item-row" key={`label-${label.id}`}>
+                    <button
+                      className={`placed-item-name ${isSelected ? 'selected' : ''}`}
+                      type="button"
+                      onClick={() => {
+                        setArchitecturalTool('select');
+                        setPendingArchitectPoint(null);
+                        setSelectedArchitecturalElement({ kind: 'label', id: label.id });
+                        setSelectedKey(null);
+                        setArmedItemId(null);
+                      }}
+                    >
+                      {label.text}
+                      <span className="mono muted small">Room label · ({label.x}, {label.y})</span>
+                    </button>
+                    <button
+                      className="btn-ghost danger placed-item-remove"
+                      type="button"
+                      onClick={() => removeArchitecturalElement('label', label.id)}
+                      aria-label={`Remove ${label.text} label`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                );
+              })}
+              {!architecturalSegments.length && !roomLabels.length && (
+                <p className="muted small">No walls, openings, or room labels yet.</p>
+              )}
             </div>
           )}
 
