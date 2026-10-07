@@ -88,6 +88,7 @@ export default function RoomEditor() {
   const [architecturalTool, setArchitecturalTool] = useState('select');
   const [pendingArchitectPoint, setPendingArchitectPoint] = useState(null);
   const [architecturalDragEnd, setArchitecturalDragEnd] = useState(null);
+  const [architecturalDragDelta, setArchitecturalDragDelta] = useState({ x: 0, y: 0 });
   const [roomLabelText, setRoomLabelText] = useState('ROOM');
   const [workspaceColor, setWorkspaceColor] = useState(() => {
     const draftFloor = FLOOR_OPTIONS.find((option) => option.floor === storedDraft?.floorColor);
@@ -752,8 +753,73 @@ export default function RoomEditor() {
     return document.elementFromPoint(clientX, clientY)?.closest('.grid-cell');
   }
 
+  function getArchitecturalPoint(svg, clientX, clientY) {
+    const screenMatrix = svg?.getScreenCTM();
+    if (!screenMatrix) return null;
+    const screenPoint = svg.createSVGPoint();
+    screenPoint.x = clientX;
+    screenPoint.y = clientY;
+    const planPoint = screenPoint.matrixTransform(screenMatrix.inverse());
+    return { x: (planPoint.x - 1) / 43, y: (planPoint.y - 1) / 43 };
+  }
+
+  function getArchitecturalMoveDelta(drag, event) {
+    const point = getArchitecturalPoint(drag.svg, event.clientX, event.clientY);
+    if (!point) return drag.delta;
+    let deltaX = Math.round(point.x - drag.pointerStart.x);
+    let deltaY = Math.round(point.y - drag.pointerStart.y);
+    const clampDelta = (delta, minimum, maximum) => (
+      Math.max(Math.ceil(minimum), Math.min(Math.floor(maximum), delta))
+    );
+
+    if (drag.kind === 'segment') {
+      const segment = drag.element;
+      deltaX = clampDelta(
+        deltaX,
+        0.5 - Math.min(segment.startX, segment.endX),
+        dimensions.width - 0.5 - Math.max(segment.startX, segment.endX),
+      );
+      deltaY = clampDelta(
+        deltaY,
+        0.5 - Math.min(segment.startY, segment.endY),
+        dimensions.length - 0.5 - Math.max(segment.startY, segment.endY),
+      );
+    } else {
+      deltaX = clampDelta(deltaX, 0.5 - drag.element.x, dimensions.width - 0.5 - drag.element.x);
+      deltaY = clampDelta(deltaY, 0.5 - drag.element.y, dimensions.length - 0.5 - drag.element.y);
+    }
+    return { x: deltaX, y: deltaY };
+  }
+
   function beginArchitecturalDrag(event) {
-    if (!isDesigner || !['wall', 'door', 'window'].includes(architecturalTool)) return;
+    if (!isDesigner) return;
+
+    if (architecturalTool === 'select') {
+      const target = event.target.closest?.('[data-architecture-kind]');
+      if (!target) return;
+      const kind = target.dataset.architectureKind;
+      const id = target.dataset.architectureId;
+      const element = kind === 'segment'
+        ? architecturalSegments.find((segment) => segment.id === id)
+        : roomLabels.find((label) => label.id === id);
+      const svg = target.ownerSVGElement;
+      const pointerStart = getArchitecturalPoint(svg, event.clientX, event.clientY);
+      if (!element || !pointerStart) return;
+
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      architecturalDragRef.current = {
+        mode: 'move', pointerId: event.pointerId, kind, id, element, svg, pointerStart, delta: { x: 0, y: 0 },
+      };
+      suppressGridClickRef.current = true;
+      setArchitecturalDragDelta({ x: 0, y: 0 });
+      setSelectedArchitecturalElement({ kind, id });
+      setSelectedKey(null);
+      setArmedItemId(null);
+      return;
+    }
+
+    if (!['wall', 'door', 'window'].includes(architecturalTool)) return;
     const cell = event.target.closest?.('.grid-cell');
     if (!cell) return;
     if (architecturalSegments.length >= 300) {
@@ -767,10 +833,11 @@ export default function RoomEditor() {
       x: Number(cell.dataset.gridX) + 0.5,
       y: Number(cell.dataset.gridY) + 0.5,
     };
-    architecturalDragRef.current = { pointerId: event.pointerId, start, end: start, type: architecturalTool };
+    architecturalDragRef.current = { mode: 'create', pointerId: event.pointerId, start, end: start, type: architecturalTool };
     suppressGridClickRef.current = true;
     setPendingArchitectPoint(start);
     setArchitecturalDragEnd(start);
+    setArchitecturalDragDelta({ x: 0, y: 0 });
     setSelectedArchitecturalElement(null);
     setSelectedKey(null);
     setArmedItemId(null);
@@ -780,6 +847,11 @@ export default function RoomEditor() {
   function updateArchitecturalDrag(event) {
     const drag = architecturalDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.mode === 'move') {
+      drag.delta = getArchitecturalMoveDelta(drag, event);
+      setArchitecturalDragDelta(drag.delta);
+      return;
+    }
     const cell = getGridCellAtPointer(event.clientX, event.clientY);
     if (!cell) return;
     const point = {
@@ -793,6 +865,36 @@ export default function RoomEditor() {
   function finishArchitecturalDrag(event) {
     const drag = architecturalDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.mode === 'move') {
+      updateArchitecturalDrag(event);
+      const { x, y } = drag.delta;
+      if (x || y) {
+        if (drag.kind === 'segment') {
+          setArchitecturalSegments((current) => current.map((segment) => segment.id === drag.id ? {
+            ...segment,
+            startX: drag.element.startX + x,
+            startY: drag.element.startY + y,
+            endX: drag.element.endX + x,
+            endY: drag.element.endY + y,
+          } : segment));
+        } else {
+          setRoomLabels((current) => current.map((label) => label.id === drag.id ? {
+            ...label,
+            x: drag.element.x + x,
+            y: drag.element.y + y,
+          } : label));
+        }
+        setStatus('Plan element moved.');
+      } else {
+        setStatus('Plan element selected.');
+      }
+      architecturalDragRef.current = null;
+      setArchitecturalDragDelta({ x: 0, y: 0 });
+      window.setTimeout(() => { suppressGridClickRef.current = false; }, 0);
+      return;
+    }
+
+    updateArchitecturalDrag(event);
     const cell = getGridCellAtPointer(event.clientX, event.clientY);
     if (cell) {
       drag.end = snapArchitecturalEndpoint(drag.start, {
@@ -820,6 +922,7 @@ export default function RoomEditor() {
     architecturalDragRef.current = null;
     setPendingArchitectPoint(null);
     setArchitecturalDragEnd(null);
+    setArchitecturalDragDelta({ x: 0, y: 0 });
     setArchitecturalTool('select');
     window.setTimeout(() => { suppressGridClickRef.current = false; }, 0);
   }
@@ -829,6 +932,7 @@ export default function RoomEditor() {
     architecturalDragRef.current = null;
     setPendingArchitectPoint(null);
     setArchitecturalDragEnd(null);
+    setArchitecturalDragDelta({ x: 0, y: 0 });
     setArchitecturalTool('select');
     suppressGridClickRef.current = false;
   }
@@ -1250,6 +1354,9 @@ export default function RoomEditor() {
               {['wall', 'door', 'window'].includes(architecturalTool) && !pendingArchitectPoint && (
                 <p className="architect-tool-hint">Drag across the plan to draw one element.</p>
               )}
+              {architecturalTool === 'select' && (architecturalSegments.length > 0 || roomLabels.length > 0) && (
+                <p className="architect-tool-hint">Drag a wall, opening, or label to reposition it.</p>
+              )}
               {pendingArchitectPoint && <p className="architect-tool-hint">Drag across the grid to set direction and length.</p>}
             </section>
           )}
@@ -1416,6 +1523,9 @@ export default function RoomEditor() {
                   {architecturalSegments.map((segment) => {
                     const isSelected = selectedArchitecturalElement?.kind === 'segment'
                       && selectedArchitecturalElement.id === segment.id;
+                    const isBeingDragged = architecturalDragRef.current?.mode === 'move'
+                      && architecturalDragRef.current.kind === 'segment'
+                      && architecturalDragRef.current.id === segment.id;
                     const startX = segment.startX * 43 + 1;
                     const startY = segment.startY * 43 + 1;
                     const endX = segment.endX * 43 + 1;
@@ -1430,6 +1540,9 @@ export default function RoomEditor() {
                     return (
                       <g
                         key={segment.id}
+                        data-architecture-kind="segment"
+                        data-architecture-id={segment.id}
+                        transform={isBeingDragged ? `translate(${architecturalDragDelta.x * 43} ${architecturalDragDelta.y * 43})` : undefined}
                         pointerEvents={architecturalTool === 'select' ? 'visiblePainted' : 'none'}
                         style={{ cursor: architecturalTool === 'select' ? 'pointer' : 'default' }}
                         onClick={(event) => {
@@ -1479,10 +1592,15 @@ export default function RoomEditor() {
                     const labelWidth = Math.max(38, label.text.length * 6.5 + 12);
                     const isSelected = selectedArchitecturalElement?.kind === 'label'
                       && selectedArchitecturalElement.id === label.id;
+                    const isBeingDragged = architecturalDragRef.current?.mode === 'move'
+                      && architecturalDragRef.current.kind === 'label'
+                      && architecturalDragRef.current.id === label.id;
                     return (
                       <g
                         key={label.id}
-                        transform={`translate(${x} ${y})`}
+                        data-architecture-kind="label"
+                        data-architecture-id={label.id}
+                        transform={`translate(${x + (isBeingDragged ? architecturalDragDelta.x * 43 : 0)} ${y + (isBeingDragged ? architecturalDragDelta.y * 43 : 0)})`}
                         pointerEvents={architecturalTool === 'select' ? 'visiblePainted' : 'none'}
                         style={{ cursor: architecturalTool === 'select' ? 'pointer' : 'default' }}
                         onClick={(event) => {
