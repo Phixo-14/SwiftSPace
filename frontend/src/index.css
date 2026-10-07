@@ -2639,6 +2639,15 @@ a {
   pointer-events: none;
 }
 
+.architectural-drag-preview {
+  stroke: #c2693c;
+  pointer-events: none;
+}
+
+.designer-editor-body .architectural-grid .grid-cell {
+  touch-action: none;
+}
+
 .architectural-room-label {
   fill: #28312c;
   font-family: var(--font-mono);

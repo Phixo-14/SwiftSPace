@@ -53,6 +53,14 @@ function distanceToSegment(point, segment) {
   return Math.hypot(point.x - segment.startX - progress * deltaX, point.y - segment.startY - progress * deltaY);
 }
 
+function snapArchitecturalEndpoint(start, point) {
+  const deltaX = point.x - start.x;
+  const deltaY = point.y - start.y;
+  return Math.abs(deltaX) >= Math.abs(deltaY)
+    ? { x: point.x, y: start.y }
+    : { x: start.x, y: point.y };
+}
+
 export default function RoomEditor() {
   const { id } = useParams();
   const isNew = !id;
@@ -79,6 +87,7 @@ export default function RoomEditor() {
   const [roomLabels, setRoomLabels] = useState(storedDraft?.roomLabels || []);
   const [architecturalTool, setArchitecturalTool] = useState('select');
   const [pendingArchitectPoint, setPendingArchitectPoint] = useState(null);
+  const [architecturalDragEnd, setArchitecturalDragEnd] = useState(null);
   const [roomLabelText, setRoomLabelText] = useState('ROOM');
   const [workspaceColor, setWorkspaceColor] = useState(() => {
     const draftFloor = FLOOR_OPTIONS.find((option) => option.floor === storedDraft?.floorColor);
@@ -118,6 +127,9 @@ export default function RoomEditor() {
   const historyReadyScopeRef = useRef(null);
   const canvasWrapRef = useRef(null);
   const gridResizeRef = useRef(null);
+  const architecturalDragRef = useRef(null);
+  const suppressGridClickRef = useRef(false);
+  const catalogDragRef = useRef(false);
 
   function getEditorSnapshot(snapshotPlacedItems = placedItems) {
     return JSON.stringify({
@@ -525,6 +537,7 @@ export default function RoomEditor() {
       const label = { id: createPlacementId(), text, ...point };
       setRoomLabels((current) => [...current, label]);
       setSelectedArchitecturalElement({ kind: 'label', id: label.id });
+      setArchitecturalTool('select');
       setStatus(`${text} label added.`);
       return;
     }
@@ -547,46 +560,44 @@ export default function RoomEditor() {
       }
       setPendingArchitectPoint(null);
       setSelectedArchitecturalElement(null);
+      setArchitecturalTool('select');
       return;
     }
 
-    if (architecturalTool !== 'erase' && !pendingArchitectPoint && architecturalSegments.length >= 300) {
-      setStatus('A project can contain up to 300 walls, doors, and windows.');
-      return;
+  }
+
+  function placeCatalogItemAt(catalogItemId, x, y, rotation = 0) {
+    const candidate = { catalogItemId, gridX: x, gridY: y, rotation };
+    const occupiedCells = getOccupiedCells(candidate);
+    const isClear = occupiedCells.every(({ x: offsetX, y: offsetY }) => {
+      const cellX = x + offsetX;
+      const cellY = y + offsetY;
+      return cellX >= 0 && cellY >= 0
+        && cellX < dimensions.width && cellY < dimensions.length
+        && !itemsByCell.has(`${cellX},${cellY}`);
+    });
+
+    if (!isClear) {
+      const reason = 'Furniture overlap: this placement conflicts with another item or leaves the room.';
+      recordOverlap(candidate, x, y, reason);
+      setStatus('Overlap recorded. ' + reason);
+      return false;
     }
 
-    if (!pendingArchitectPoint) {
-      setPendingArchitectPoint(point);
-      setStatus(`Choose an endpoint for the ${architecturalTool}.`);
-      return;
-    }
-
-    const deltaX = point.x - pendingArchitectPoint.x;
-    const deltaY = point.y - pendingArchitectPoint.y;
-    const endPoint = Math.abs(deltaX) >= Math.abs(deltaY)
-      ? { x: point.x, y: pendingArchitectPoint.y }
-      : { x: pendingArchitectPoint.x, y: point.y };
-    if (endPoint.x === pendingArchitectPoint.x && endPoint.y === pendingArchitectPoint.y) {
-      setStatus('Choose a different endpoint.');
-      return;
-    }
-
-    const segment = {
-      id: createPlacementId(),
-      type: architecturalTool,
-      startX: pendingArchitectPoint.x,
-      startY: pendingArchitectPoint.y,
-      endX: endPoint.x,
-      endY: endPoint.y,
-    };
-    setArchitecturalSegments((current) => [...current, segment]);
-    setSelectedArchitecturalElement({ kind: 'segment', id: segment.id });
-    setPendingArchitectPoint(null);
-    setStatus(`${architecturalTool[0].toUpperCase()}${architecturalTool.slice(1)} added.`);
+    setPlacedItems((current) => [
+      ...current,
+      { placementId: createPlacementId(), ...candidate, customColor: null },
+    ]);
+    setSelectedKey(`${x},${y}`);
+    setSelectedArchitecturalElement(null);
+    setArmedItemId(null);
+    setStatus('');
+    return true;
   }
 
   const handleCellClick = useCallback(
     (x, y) => {
+      if (isDesigner && ['wall', 'door', 'window'].includes(architecturalTool)) return;
       if (isDesigner && architecturalTool !== 'select') {
         handleArchitecturalCellClick(x, y);
         return;
@@ -603,34 +614,12 @@ export default function RoomEditor() {
 
       if (armedItemId) {
         const currentRotation = selectedItem ? selectedItem.rotation : 0;
-        const candidate = { catalogItemId: armedItemId, gridX: x, gridY: y, rotation: currentRotation };
-        const occupiedCells = getOccupiedCells(candidate);
-        const isClear = occupiedCells.every(({ x: offsetX, y: offsetY }) => {
-          const cellX = x + offsetX;
-          const cellY = y + offsetY;
-          return cellX >= 0 && cellY >= 0
-            && cellX < dimensions.width && cellY < dimensions.length
-            && !itemsByCell.has(`${cellX},${cellY}`);
-        });
-
-        if (!isClear) {
-          const reason = 'Furniture overlap: this placement conflicts with another item or leaves the room.';
-          recordOverlap(candidate, x, y, reason);
-          setStatus('Overlap recorded. ' + reason);
-          return;
-        }
-
-        setPlacedItems((prev) => [
-          ...prev,
-          { placementId: createPlacementId(), catalogItemId: armedItemId, gridX: x, gridY: y, rotation: currentRotation, customColor: null },
-        ]);
-        setSelectedKey(key);
-        setStatus('');
+        placeCatalogItemAt(armedItemId, x, y, currentRotation);
       } else {
         setSelectedKey(null);
       }
     },
-    [architecturalSegments, architecturalTool, isDesigner, pendingArchitectPoint, roomLabels, roomLabelText, armedItemId, catalogById, dimensions, itemsByCell]
+    [architecturalSegments, architecturalTool, isDesigner, pendingArchitectPoint, roomLabels, roomLabelText, armedItemId, dimensions, itemsByCell, selectedItem, placeCatalogItemAt]
   );
 
   function setItemRotation(nextRotation) {
@@ -711,10 +700,29 @@ export default function RoomEditor() {
     setDraggedItem(item);
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('application/json', JSON.stringify({
+      kind: 'move',
       gridX: item.gridX,
       gridY: item.gridY,
       catalogItemId: item.catalogItemId,
     }));
+  }
+
+  function handleCatalogDragStart(event, item) {
+    const rotation = selectedItem?.rotation || 0;
+    catalogDragRef.current = true;
+    setArmedItemId(null);
+    setDraggedItem({ catalogItemId: item._id, rotation });
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData('application/json', JSON.stringify({
+      kind: 'catalog',
+      catalogItemId: item._id,
+      rotation,
+    }));
+  }
+
+  function handleCatalogDragEnd() {
+    setDraggedItem(null);
+    window.setTimeout(() => { catalogDragRef.current = false; }, 0);
   }
 
   function handleDragEnd() {
@@ -726,6 +734,11 @@ export default function RoomEditor() {
     const data = event.dataTransfer.getData('application/json');
     if (!data) return;
     const dragged = JSON.parse(data);
+    if (dragged.kind === 'catalog') {
+      placeCatalogItemAt(dragged.catalogItemId, gridX, gridY, dragged.rotation || 0);
+      setDraggedItem(null);
+      return;
+    }
     const item = placedItems.find((candidate) =>
       candidate.gridX === dragged.gridX
       && candidate.gridY === dragged.gridY
@@ -733,6 +746,91 @@ export default function RoomEditor() {
     );
     if (item) moveItem(item, gridX, gridY);
     setDraggedItem(null);
+  }
+
+  function getGridCellAtPointer(clientX, clientY) {
+    return document.elementFromPoint(clientX, clientY)?.closest('.grid-cell');
+  }
+
+  function beginArchitecturalDrag(event) {
+    if (!isDesigner || !['wall', 'door', 'window'].includes(architecturalTool)) return;
+    const cell = event.target.closest?.('.grid-cell');
+    if (!cell) return;
+    if (architecturalSegments.length >= 300) {
+      setStatus('A project can contain up to 300 walls, doors, and windows.');
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const start = {
+      x: Number(cell.dataset.gridX) + 0.5,
+      y: Number(cell.dataset.gridY) + 0.5,
+    };
+    architecturalDragRef.current = { pointerId: event.pointerId, start, end: start, type: architecturalTool };
+    suppressGridClickRef.current = true;
+    setPendingArchitectPoint(start);
+    setArchitecturalDragEnd(start);
+    setSelectedArchitecturalElement(null);
+    setSelectedKey(null);
+    setArmedItemId(null);
+    setStatus(`Drag to draw ${architecturalTool}.`);
+  }
+
+  function updateArchitecturalDrag(event) {
+    const drag = architecturalDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const cell = getGridCellAtPointer(event.clientX, event.clientY);
+    if (!cell) return;
+    const point = {
+      x: Number(cell.dataset.gridX) + 0.5,
+      y: Number(cell.dataset.gridY) + 0.5,
+    };
+    drag.end = snapArchitecturalEndpoint(drag.start, point);
+    setArchitecturalDragEnd(drag.end);
+  }
+
+  function finishArchitecturalDrag(event) {
+    const drag = architecturalDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const cell = getGridCellAtPointer(event.clientX, event.clientY);
+    if (cell) {
+      drag.end = snapArchitecturalEndpoint(drag.start, {
+        x: Number(cell.dataset.gridX) + 0.5,
+        y: Number(cell.dataset.gridY) + 0.5,
+      });
+    }
+
+    if (drag.start.x !== drag.end.x || drag.start.y !== drag.end.y) {
+      const segment = {
+        id: createPlacementId(),
+        type: drag.type,
+        startX: drag.start.x,
+        startY: drag.start.y,
+        endX: drag.end.x,
+        endY: drag.end.y,
+      };
+      setArchitecturalSegments((current) => [...current, segment]);
+      setSelectedArchitecturalElement({ kind: 'segment', id: segment.id });
+      setStatus(`${drag.type[0].toUpperCase()}${drag.type.slice(1)} added.`);
+    } else {
+      setStatus('Drag across at least one grid cell to draw.');
+    }
+
+    architecturalDragRef.current = null;
+    setPendingArchitectPoint(null);
+    setArchitecturalDragEnd(null);
+    setArchitecturalTool('select');
+    window.setTimeout(() => { suppressGridClickRef.current = false; }, 0);
+  }
+
+  function cancelArchitecturalDrag(event) {
+    if (architecturalDragRef.current?.pointerId !== event.pointerId) return;
+    architecturalDragRef.current = null;
+    setPendingArchitectPoint(null);
+    setArchitecturalDragEnd(null);
+    setArchitecturalTool('select');
+    suppressGridClickRef.current = false;
   }
 
   function removeSelected() {
@@ -1149,7 +1247,10 @@ export default function RoomEditor() {
                   <input value={roomLabelText} maxLength={40} onChange={(event) => setRoomLabelText(event.target.value.toUpperCase())} />
                 </label>
               )}
-              {pendingArchitectPoint && <p className="architect-tool-hint">Select the endpoint on the plan.</p>}
+              {['wall', 'door', 'window'].includes(architecturalTool) && !pendingArchitectPoint && (
+                <p className="architect-tool-hint">Drag across the plan to draw one element.</p>
+              )}
+              {pendingArchitectPoint && <p className="architect-tool-hint">Drag across the grid to set direction and length.</p>}
             </section>
           )}
           <section className="catalog-section furniture-section">
@@ -1186,11 +1287,17 @@ export default function RoomEditor() {
                     <button
                       key={item._id}
                       className={`catalog-item ${armedItemId === item._id ? 'armed' : ''}`}
+                      type="button"
+                      draggable
                       aria-label={`${item.name}, ${item.footprint.width} by ${item.footprint.length} footprint`}
                       onClick={() => {
-                        setArmedItemId((prev) => (prev === item._id ? null : item._id));
+                        if (catalogDragRef.current) return;
+                        setArmedItemId(item._id);
                         setSelectedKey(null);
+                        setSelectedArchitecturalElement(null);
                       }}
+                      onDragStart={(event) => handleCatalogDragStart(event, item)}
+                      onDragEnd={handleCatalogDragEnd}
                     >
                       <ItemGlyph iconKey={item.iconKey} color={item.defaultColor} />
                       <span className="catalog-item-name">{item.name}</span>
@@ -1224,7 +1331,7 @@ export default function RoomEditor() {
               </div>
             )}
           </section>
-          {armedItemId && <p className="hint">Click an empty cell to place it.</p>}
+          {armedItemId && <p className="hint">Click a cell or drag this item onto the floor. Places once.</p>}
         </aside>
 
         <main className="canvas-wrap" ref={canvasWrapRef}>
@@ -1253,6 +1360,16 @@ export default function RoomEditor() {
           <div className="workspace-zoom" style={{ transform: `scale(${zoom * fitZoom}) rotate(${platformRotation}deg)` }}>
             <div
               className={`iso-grid${isDesigner ? ' architectural-grid' : ''}`}
+              onPointerDown={beginArchitecturalDrag}
+              onPointerMove={updateArchitecturalDrag}
+              onPointerUp={finishArchitecturalDrag}
+              onPointerCancel={cancelArchitecturalDrag}
+              onClickCapture={(event) => {
+                if (!suppressGridClickRef.current) return;
+                suppressGridClickRef.current = false;
+                event.preventDefault();
+                event.stopPropagation();
+              }}
               style={{
                 '--cols': dimensions.width,
                 '--rows': dimensions.length,
@@ -1272,6 +1389,8 @@ export default function RoomEditor() {
                     key={key}
                     className={`grid-cell ${placed ? 'occupied' : ''} ${isSelected ? 'selected' : ''} ${previewClass}`.trim()}
                     style={{ gridColumn: x + 1, gridRow: y + 1 }}
+                    data-grid-x={x}
+                    data-grid-y={y}
                     onClick={() => handleCellClick(x, y)}
                     onMouseEnter={() => setHoverCell({ x, y })}
                     onMouseLeave={() => setHoverCell(null)}
@@ -1381,6 +1500,17 @@ export default function RoomEditor() {
                   })}
                   {pendingArchitectPoint && (
                     <circle cx={pendingArchitectPoint.x * 43 + 1} cy={pendingArchitectPoint.y * 43 + 1} r="5" fill="#c2693c" stroke="#fff" strokeWidth="1.5" />
+                  )}
+                  {pendingArchitectPoint && architecturalDragEnd && (
+                    <line
+                      className="architectural-drag-preview"
+                      x1={pendingArchitectPoint.x * 43 + 1}
+                      y1={pendingArchitectPoint.y * 43 + 1}
+                      x2={architecturalDragEnd.x * 43 + 1}
+                      y2={architecturalDragEnd.y * 43 + 1}
+                      strokeWidth={wallStrokeWidth}
+                      strokeDasharray="5 3"
+                    />
                   )}
                 </svg>
               )}
