@@ -25,6 +25,8 @@ const ARCHITECTURAL_TOOLS = [
   { value: 'wall', label: 'Wall' },
   { value: 'door', label: 'Door' },
   { value: 'window', label: 'Window' },
+  { value: 'label', label: 'Room label' },
+  { value: 'erase', label: 'Erase' },
 ];
 
 function readDraft(key) {
@@ -87,6 +89,7 @@ export default function RoomEditor() {
   const [pendingArchitectPoint, setPendingArchitectPoint] = useState(null);
   const [architecturalDragEnd, setArchitecturalDragEnd] = useState(null);
   const [architecturalDragDelta, setArchitecturalDragDelta] = useState({ x: 0, y: 0 });
+  const [roomLabelText, setRoomLabelText] = useState('ROOM');
   const [workspaceColor, setWorkspaceColor] = useState(() => {
     const draftFloor = FLOOR_OPTIONS.find((option) => option.floor === storedDraft?.floorColor);
     return draftFloor?.workspace || FLOOR_OPTIONS[0].workspace;
@@ -511,6 +514,53 @@ export default function RoomEditor() {
     ].slice(-100));
   }
 
+  function handleArchitecturalCellClick(x, y) {
+    const point = { x: x + 0.5, y: y + 0.5 };
+    setSelectedKey(null);
+    setArmedItemId(null);
+
+    if (architecturalTool === 'label') {
+      if (roomLabels.length >= 100) {
+        setStatus('A project can contain up to 100 room labels.');
+        return;
+      }
+      const text = roomLabelText.trim().toUpperCase();
+      if (!text) {
+        setStatus('Enter a room label before placing it.');
+        return;
+      }
+      const label = { id: createPlacementId(), text, ...point, rotation: 0 };
+      setRoomLabels((current) => [...current, label]);
+      setSelectedArchitecturalElement({ kind: 'label', id: label.id });
+      setArchitecturalTool('select');
+      setStatus(`${text} label added.`);
+      return;
+    }
+
+    if (architecturalTool === 'erase') {
+      const segmentDistances = architecturalSegments.map((segment) => distanceToSegment(point, segment));
+      const labelDistances = roomLabels.map((label) => Math.hypot(point.x - label.x, point.y - label.y));
+      const nearestSegment = Math.min(...segmentDistances, Infinity);
+      const nearestLabel = Math.min(...labelDistances, Infinity);
+      if (Math.min(nearestSegment, nearestLabel) > 0.9) {
+        setStatus('Select a wall, opening, or label to remove.');
+      } else if (nearestSegment <= nearestLabel) {
+        const removeIndex = segmentDistances.indexOf(nearestSegment);
+        setArchitecturalSegments((current) => current.filter((_, index) => index !== removeIndex));
+        setStatus('Plan element removed.');
+      } else {
+        const removeIndex = labelDistances.indexOf(nearestLabel);
+        setRoomLabels((current) => current.filter((_, index) => index !== removeIndex));
+        setStatus('Room label removed.');
+      }
+      setPendingArchitectPoint(null);
+      setSelectedArchitecturalElement(null);
+      setArchitecturalTool('select');
+      return;
+    }
+
+  }
+
   function placeCatalogItemAt(catalogItemId, x, y, rotation = 0) {
     const candidate = { catalogItemId, gridX: x, gridY: y, rotation };
     const occupiedCells = getOccupiedCells(candidate);
@@ -543,6 +593,10 @@ export default function RoomEditor() {
   const handleCellClick = useCallback(
     (x, y) => {
       if (isDesigner && ['wall', 'door', 'window'].includes(architecturalTool)) return;
+      if (isDesigner && architecturalTool !== 'select') {
+        handleArchitecturalCellClick(x, y);
+        return;
+      }
       const key = `${x},${y}`;
       const existing = itemsByCell.get(key);
       setSelectedArchitecturalElement(null);
@@ -560,7 +614,7 @@ export default function RoomEditor() {
         setSelectedKey(null);
       }
     },
-    [architecturalTool, isDesigner, armedItemId, dimensions, itemsByCell, selectedItem, placeCatalogItemAt]
+    [architecturalSegments, architecturalTool, isDesigner, pendingArchitectPoint, roomLabels, roomLabelText, armedItemId, dimensions, itemsByCell, selectedItem, placeCatalogItemAt]
   );
 
   function setItemRotation(nextRotation) {
@@ -1335,6 +1389,12 @@ export default function RoomEditor() {
                   ))}
                 </select>
               </label>
+              {architecturalTool === 'label' && (
+                <label className="inspector-field architect-label-input">
+                  Room label
+                  <input value={roomLabelText} maxLength={40} onChange={(event) => setRoomLabelText(event.target.value.toUpperCase())} />
+                </label>
+              )}
               {['wall', 'door', 'window'].includes(architecturalTool) && !pendingArchitectPoint && (
                 <p className="architect-tool-hint">Drag across the plan to draw one element.</p>
               )}
