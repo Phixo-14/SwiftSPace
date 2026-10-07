@@ -1624,7 +1624,7 @@ export default function RoomEditor() {
                     );
                   })}
                   {pendingArchitectPoint && (
-                    <circle cx={pendingArchitectPoint.x * 43 + 1} cy={pendingArchitectPoint.y * 43 + 1} r="5" fill="#c2693c" stroke="#fff" strokeWidth="1.5" />
+                    <circle cx={pendingArchitectPoint.x * 43 + 1} cy={pendingArchitectPoint.y * 43 + 1} r="5" fill="#c2693c" stroke="#fff" strokeWidth="1.5" pointerEvents="none" />
                   )}
                   {pendingArchitectPoint && architecturalDragEnd && (
                     <line
@@ -1635,6 +1635,7 @@ export default function RoomEditor() {
                       y2={architecturalDragEnd.y * 43 + 1}
                       strokeWidth={wallStrokeWidth}
                       strokeDasharray="5 3"
+                      pointerEvents="none"
                     />
                   )}
                 </svg>
