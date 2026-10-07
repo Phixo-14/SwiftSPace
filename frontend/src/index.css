@@ -2279,45 +2279,6 @@ a {
   line-height: 1.4;
 }
 
-.designer-editor-body .catalog-panel {
-  background: #f2f3ee;
-  border-color: #d4d8d1;
-  color: #202a25;
-}
-
-.designer-editor-body .catalog-panel .panel-heading,
-.designer-editor-body .catalog-section-title,
-.designer-editor-body .selected-category-heading,
-.designer-editor-body .furniture-category {
-  color: #303a35;
-}
-
-.designer-editor-body .architect-tools {
-  border-color: #d0d5ce;
-}
-
-.designer-editor-body .architect-tool {
-  background: #fbfcf9;
-  border-color: #c9cec7;
-  color: #505b55;
-}
-
-.designer-editor-body .architect-tool:hover,
-.designer-editor-body .architect-tool.active {
-  background: #e7eee9;
-  border-color: #42715e;
-  color: #1f4939;
-}
-
-.designer-editor-body .inspector-field input,
-.designer-editor-body .inspector-field select,
-.designer-editor-body .inspector-field textarea,
-.designer-editor-body .catalog-search input {
-  background: #fff;
-  border-color: #cbd0ca;
-  color: #202a25;
-}
-
 .overlap-records {
   margin-top: 1.25rem;
   padding-top: 1rem;
@@ -2588,10 +2549,6 @@ a {
   background: var(--workspace-color, #4b5048);
 }
 
-.designer-editor-body .canvas-wrap {
-  background: #e5e7e2;
-}
-
 .print-room-title {
   display: none;
 }
@@ -2670,19 +2627,6 @@ a {
   gap: 1px;
   padding: 1px;
   background: var(--grid-color, #8c7455);
-}
-
-.designer-editor-body .architectural-grid {
-  background: #c4c9c1;
-}
-
-.designer-editor-body .grid-cell {
-  background: #fbfaf6;
-  border-color: #deded6;
-}
-
-.designer-editor-body .grid-cell:hover {
-  background: #edf1e9;
 }
 
 .architectural-overlay {
