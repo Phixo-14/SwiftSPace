@@ -57,13 +57,15 @@ async function saveRoomExtras(roomId, userId, timerSeconds, overlapRecords) {
 
 // Confirms every placedItem sits fully inside the room's own width/length
 // and references a catalog item that actually exists.
-async function assertItemsFitAndExist(dimensions, placedItems) {
+async function assertItemsFitAndExist(dimensions, placedItems, architecturalSegments = []) {
   if (!placedItems.length) return null;
 
   const ids = [...new Set(placedItems.map((i) => i.catalogItemId))];
   const found = await CatalogItem.find({ _id: { $in: ids } }).select('_id footprint');
   const catalogById = new Map(found.map((item) => [item._id.toString(), item]));
   const occupied = new Set();
+  const doors = architecturalSegments.filter((segment) => segment.type === 'door');
+  const epsilon = 1e-9;
 
   for (const item of placedItems) {
     const catalogItem = catalogById.get(item.catalogItemId.toString());
@@ -88,6 +90,20 @@ async function assertItemsFitAndExist(dimensions, placedItems) {
         if (x < 0 || y < 0 || x >= dimensions.width || y >= dimensions.length) {
           return `Item at (${item.gridX}, ${item.gridY}) falls outside a ${dimensions.width}x${dimensions.length} room.`;
         }
+        const doorOverlap = doors.some((door) => {
+          const minX = Math.min(door.startX, door.endX);
+          const maxX = Math.max(door.startX, door.endX);
+          const minY = Math.min(door.startY, door.endY);
+          const maxY = Math.max(door.startY, door.endY);
+          const horizontal = Math.abs(door.startY - door.endY) < epsilon;
+
+          return horizontal
+            ? door.startY >= y - epsilon && door.startY <= y + 1 + epsilon
+              && maxX >= x - epsilon && minX <= x + 1 + epsilon
+            : door.startX >= x - epsilon && door.startX <= x + 1 + epsilon
+              && maxY >= y - epsilon && minY <= y + 1 + epsilon;
+        });
+        if (doorOverlap) return `Furniture at (${x}, ${y}) overlaps a door opening.`;
         const cellKey = `${x},${y}`;
         if (occupied.has(cellKey)) {
           return `Furniture footprints overlap at (${x}, ${y}).`;
@@ -153,7 +169,7 @@ async function createRoom(req, res) {
     architecturalSegments, roomLabels,
   } = req.body;
 
-  const fitError = await assertItemsFitAndExist(dimensions, placedItems);
+  const fitError = await assertItemsFitAndExist(dimensions, placedItems, architecturalSegments || []);
   if (fitError) return res.status(400).json({ message: fitError });
   const designer = canUseArchitecturalTools(req.user);
   if (designer) {
@@ -200,7 +216,7 @@ async function updateRoom(req, res) {
     floorColor, gridColor, placedItems, overlapRecords, wallThicknessMm,
     architecturalSegments, roomLabels,
   } = req.body;
-  const fitError = await assertItemsFitAndExist(dimensions, placedItems);
+  const fitError = await assertItemsFitAndExist(dimensions, placedItems, architecturalSegments || []);
   if (fitError) return res.status(400).json({ message: fitError });
   const designer = canUseArchitecturalTools(req.user);
   if (designer) {
@@ -386,7 +402,11 @@ async function restoreRoomVersion(req, res) {
   const version = await RoomVersion.findOne({ _id: req.params.versionId, roomId: room._id, userId: req.user.id });
   if (!version) return res.status(404).json({ message: 'Project version not found.' });
   const snapshot = version.snapshot;
-  const fitError = await assertItemsFitAndExist(snapshot.dimensions, snapshot.placedItems);
+  const fitError = await assertItemsFitAndExist(
+    snapshot.dimensions,
+    snapshot.placedItems,
+    snapshot.architecturalSegments || [],
+  );
   if (fitError) return res.status(400).json({ message: fitError });
 
   room.roomName = snapshot.roomName;

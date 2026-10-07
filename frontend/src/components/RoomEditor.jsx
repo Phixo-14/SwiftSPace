@@ -25,8 +25,6 @@ const ARCHITECTURAL_TOOLS = [
   { value: 'wall', label: 'Wall' },
   { value: 'door', label: 'Door' },
   { value: 'window', label: 'Window' },
-  { value: 'label', label: 'Room label' },
-  { value: 'erase', label: 'Erase' },
 ];
 
 function readDraft(key) {
@@ -53,12 +51,32 @@ function distanceToSegment(point, segment) {
   return Math.hypot(point.x - segment.startX - progress * deltaX, point.y - segment.startY - progress * deltaY);
 }
 
-function snapArchitecturalEndpoint(start, point) {
+function snapArchitecturalSegment(start, point, dimensions) {
   const deltaX = point.x - start.x;
   const deltaY = point.y - start.y;
-  return Math.abs(deltaX) >= Math.abs(deltaY)
-    ? { x: point.x, y: start.y }
-    : { x: start.x, y: point.y };
+  const snapAlongEdge = (value, maximum) => Math.max(0, Math.min(maximum, Math.round(value * 2) / 2));
+
+  if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+    const edgeY = Math.max(0, Math.min(dimensions.length, Math.round(start.y)));
+    return {
+      start: { x: snapAlongEdge(start.x, dimensions.width), y: edgeY },
+      end: { x: snapAlongEdge(point.x, dimensions.width), y: edgeY },
+    };
+  }
+
+  const edgeX = Math.max(0, Math.min(dimensions.width, Math.round(start.x)));
+  return {
+    start: { x: edgeX, y: snapAlongEdge(start.y, dimensions.length) },
+    end: { x: edgeX, y: snapAlongEdge(point.y, dimensions.length) },
+  };
+}
+
+function snapArchitecturalPoint(point, dimensions) {
+  const snap = (value, maximum) => Math.max(0, Math.min(maximum, Math.round(value * 2) / 2));
+  return {
+    x: snap(point.x, dimensions.width),
+    y: snap(point.y, dimensions.length),
+  };
 }
 
 export default function RoomEditor() {
@@ -434,6 +452,31 @@ export default function RoomEditor() {
     };
   }
 
+  function furnitureTouchesDoor(item) {
+    const epsilon = 1e-9;
+    const cells = getOccupiedCells(item).map(({ x, y }) => ({
+      left: item.gridX + x,
+      top: item.gridY + y,
+      right: item.gridX + x + 1,
+      bottom: item.gridY + y + 1,
+    }));
+
+    return architecturalSegments.some((segment) => {
+      if (segment.type !== 'door') return false;
+      const minX = Math.min(segment.startX, segment.endX);
+      const maxX = Math.max(segment.startX, segment.endX);
+      const minY = Math.min(segment.startY, segment.endY);
+      const maxY = Math.max(segment.startY, segment.endY);
+      const horizontal = Math.abs(segment.startY - segment.endY) < epsilon;
+
+      return cells.some((cell) => horizontal
+        ? segment.startY >= cell.top - epsilon && segment.startY <= cell.bottom + epsilon
+          && maxX >= cell.left - epsilon && minX <= cell.right + epsilon
+        : segment.startX >= cell.left - epsilon && segment.startX <= cell.right + epsilon
+          && maxY >= cell.top - epsilon && minY <= cell.bottom + epsilon);
+    });
+  }
+
   const itemsByCell = useMemo(() => {
     const map = new Map();
     placedItems.forEach((item) => {
@@ -470,8 +513,9 @@ export default function RoomEditor() {
       rotation: activeItem.rotation,
     };
     const occupiedCells = getOccupiedCells(candidate);
+    const doorOverlap = furnitureTouchesDoor(candidate);
 
-    const canPlace = occupiedCells.every(({ x, y }) => {
+    const canPlace = !doorOverlap && occupiedCells.every(({ x, y }) => {
       const cellX = hoverCell.x + x;
       const cellY = hoverCell.y + y;
       const occupant = itemsByCell.get(`${cellX},${cellY}`);
@@ -487,9 +531,11 @@ export default function RoomEditor() {
       bounds,
       occupiedCells,
       canPlace,
-      reason: canPlace ? null : 'Furniture overlap: this placement conflicts with another item or leaves the room.',
+      reason: doorOverlap
+        ? 'Furniture overlaps a door opening.'
+        : canPlace ? null : 'Furniture overlap: this placement conflicts with another item or leaves the room.',
     };
-  }, [armedItemId, catalogById, dimensions, draggedItem, hoverCell, itemsByCell, selectedItem]);
+  }, [architecturalSegments, armedItemId, catalogById, dimensions, draggedItem, hoverCell, itemsByCell, selectedItem]);
 
   const previewCellSet = useMemo(() => {
     if (!previewItem || !hoverCell) return new Set();
@@ -571,9 +617,12 @@ export default function RoomEditor() {
         && cellX < dimensions.width && cellY < dimensions.length
         && !itemsByCell.has(`${cellX},${cellY}`);
     });
+    const doorOverlap = furnitureTouchesDoor(candidate);
 
-    if (!isClear) {
-      const reason = 'Furniture overlap: this placement conflicts with another item or leaves the room.';
+    if (!isClear || doorOverlap) {
+      const reason = doorOverlap
+        ? 'Furniture overlaps a door opening.'
+        : 'Furniture overlap: this placement conflicts with another item or leaves the room.';
       recordOverlap(candidate, x, y, reason);
       setStatus('Overlap recorded. ' + reason);
       return false;
@@ -630,9 +679,12 @@ export default function RoomEditor() {
         && cellX < dimensions.width && cellY < dimensions.length
         && (!occupant || occupant === selectedItem);
     });
+    const doorOverlap = furnitureTouchesDoor({ ...selectedItem, rotation: nextRotation });
 
-    if (!isClear) {
-      const reason = 'That rotation would overlap another item or leave the room.';
+    if (!isClear || doorOverlap) {
+      const reason = doorOverlap
+        ? 'Furniture overlaps a door opening.'
+        : 'That rotation would overlap another item or leave the room.';
       recordOverlap({ ...selectedItem, rotation: nextRotation }, selectedItem.gridX, selectedItem.gridY, reason);
       setStatus('Overlap recorded. ' + reason);
       return;
@@ -660,6 +712,35 @@ export default function RoomEditor() {
     setItemRotation((selectedItem.rotation + 270) % 360);
   }
 
+  function rotatePlacedItem(itemToRotate, stepDegrees = 90) {
+    if (!itemToRotate) return;
+
+    const nextRotation = ((itemToRotate.rotation + stepDegrees) % 360 + 360) % 360;
+    const candidate = { ...itemToRotate, rotation: nextRotation };
+    const isClear = getOccupiedCells(candidate).every(({ x, y }) => {
+      const cellX = itemToRotate.gridX + x;
+      const cellY = itemToRotate.gridY + y;
+      const occupant = itemsByCell.get(`${cellX},${cellY}`);
+      return cellX >= 0 && cellY >= 0
+        && cellX < dimensions.width && cellY < dimensions.length
+        && (!occupant || occupant === itemToRotate);
+    });
+    const doorOverlap = furnitureTouchesDoor(candidate);
+
+    if (!isClear || doorOverlap) {
+      const reason = doorOverlap
+        ? 'Furniture overlaps a door opening.'
+        : 'That rotation would overlap another item or leave the room.';
+      recordOverlap(candidate, itemToRotate.gridX, itemToRotate.gridY, reason);
+      setStatus('Overlap recorded. ' + reason);
+      return;
+    }
+
+    setPlacedItems((current) => current.map((item) => item === itemToRotate ? { ...item, rotation: nextRotation } : item));
+    setSelectedKey(`${itemToRotate.gridX},${itemToRotate.gridY}`);
+    setStatus('');
+  }
+
   function commitRotationDraft(nextRotation = rotationDraft) {
     if (nextRotation === null || !Number.isFinite(Number(nextRotation))) return;
     setRotationDraft(null);
@@ -676,9 +757,12 @@ export default function RoomEditor() {
         && cellX < dimensions.width && cellY < dimensions.length
         && (!occupant || occupant === itemToMove);
     });
+    const doorOverlap = furnitureTouchesDoor(candidate);
 
-    if (!isClear) {
-      const reason = 'That furniture footprint does not fit in the selected space.';
+    if (!isClear || doorOverlap) {
+      const reason = doorOverlap
+        ? 'Furniture overlaps a door opening.'
+        : 'That furniture footprint does not fit in the selected space.';
       recordOverlap(candidate, gridX, gridY, reason);
       setStatus('Overlap recorded. ' + reason);
       return;
@@ -743,10 +827,6 @@ export default function RoomEditor() {
     setDraggedItem(null);
   }
 
-  function getGridCellAtPointer(clientX, clientY) {
-    return document.elementFromPoint(clientX, clientY)?.closest('.grid-cell');
-  }
-
   function getArchitecturalPoint(svg, clientX, clientY) {
     const screenMatrix = svg?.getScreenCTM();
     if (!screenMatrix) return null;
@@ -770,13 +850,13 @@ export default function RoomEditor() {
       const segment = drag.element;
       deltaX = clampDelta(
         deltaX,
-        0.5 - Math.min(segment.startX, segment.endX),
-        dimensions.width - 0.5 - Math.max(segment.startX, segment.endX),
+        -Math.min(segment.startX, segment.endX),
+        dimensions.width - Math.max(segment.startX, segment.endX),
       );
       deltaY = clampDelta(
         deltaY,
-        0.5 - Math.min(segment.startY, segment.endY),
-        dimensions.length - 0.5 - Math.max(segment.startY, segment.endY),
+        -Math.min(segment.startY, segment.endY),
+        dimensions.length - Math.max(segment.startY, segment.endY),
       );
     } else {
       deltaX = clampDelta(deltaX, 0.5 - drag.element.x, dimensions.width - 0.5 - drag.element.x);
@@ -822,8 +902,11 @@ export default function RoomEditor() {
     }
 
     if (!['wall', 'door', 'window'].includes(architecturalTool)) return;
-    const cell = event.target.closest?.('.grid-cell');
-    if (!cell) return;
+    if (event.target.closest?.('.grid-resize-handle, .placed-item')) return;
+    const svg = event.currentTarget.querySelector('.architectural-overlay');
+    const pointerPoint = getArchitecturalPoint(svg, event.clientX, event.clientY);
+    if (!pointerPoint || pointerPoint.x < 0 || pointerPoint.y < 0
+      || pointerPoint.x > dimensions.width || pointerPoint.y > dimensions.length) return;
     if (architecturalSegments.length >= 300) {
       setStatus('A project can contain up to 300 walls, doors, and windows.');
       return;
@@ -831,11 +914,8 @@ export default function RoomEditor() {
 
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    const start = {
-      x: Number(cell.dataset.gridX) + 0.5,
-      y: Number(cell.dataset.gridY) + 0.5,
-    };
-    architecturalDragRef.current = { mode: 'create', pointerId: event.pointerId, start, end: start, type: architecturalTool };
+    const start = snapArchitecturalPoint(pointerPoint, dimensions);
+    architecturalDragRef.current = { mode: 'create', pointerId: event.pointerId, pointerStart: pointerPoint, start, end: start, type: architecturalTool, svg };
     suppressGridClickRef.current = true;
     setPendingArchitectPoint(start);
     setArchitecturalDragEnd(start);
@@ -854,13 +934,12 @@ export default function RoomEditor() {
       setArchitecturalDragDelta(drag.delta);
       return;
     }
-    const cell = getGridCellAtPointer(event.clientX, event.clientY);
-    if (!cell) return;
-    const point = {
-      x: Number(cell.dataset.gridX) + 0.5,
-      y: Number(cell.dataset.gridY) + 0.5,
-    };
-    drag.end = snapArchitecturalEndpoint(drag.start, point);
+    const point = getArchitecturalPoint(drag.svg, event.clientX, event.clientY);
+    if (!point) return;
+    const segment = snapArchitecturalSegment(drag.pointerStart, point, dimensions);
+    drag.start = segment.start;
+    drag.end = segment.end;
+    setPendingArchitectPoint(segment.start);
     setArchitecturalDragEnd(drag.end);
   }
 
@@ -897,13 +976,6 @@ export default function RoomEditor() {
     }
 
     updateArchitecturalDrag(event);
-    const cell = getGridCellAtPointer(event.clientX, event.clientY);
-    if (cell) {
-      drag.end = snapArchitecturalEndpoint(drag.start, {
-        x: Number(cell.dataset.gridX) + 0.5,
-        y: Number(cell.dataset.gridY) + 0.5,
-      });
-    }
 
     if (drag.start.x !== drag.end.x || drag.start.y !== drag.end.y) {
       const segment = {
@@ -979,10 +1051,10 @@ export default function RoomEditor() {
     const maxX = Math.max(start.x, end.x);
     const minY = Math.min(start.y, end.y);
     const maxY = Math.max(start.y, end.y);
-    const shiftX = minX < 0.5 ? 0.5 - minX : maxX > dimensions.width - 0.5 ? dimensions.width - 0.5 - maxX : 0;
-    const shiftY = minY < 0.5 ? 0.5 - minY : maxY > dimensions.length - 0.5 ? dimensions.length - 0.5 - maxY : 0;
-    if (minX + shiftX < 0.5 || maxX + shiftX > dimensions.width - 0.5
-      || minY + shiftY < 0.5 || maxY + shiftY > dimensions.length - 0.5) {
+    const shiftX = minX < 0 ? -minX : maxX > dimensions.width ? dimensions.width - maxX : 0;
+    const shiftY = minY < 0 ? -minY : maxY > dimensions.length ? dimensions.length - maxY : 0;
+    if (minX + shiftX < 0 || maxX + shiftX > dimensions.width
+      || minY + shiftY < 0 || maxY + shiftY > dimensions.length) {
       setStatus('This element is too long to rotate within the room.');
       return;
     }
@@ -1185,7 +1257,7 @@ export default function RoomEditor() {
     const cellsY = (-screenX * sine + screenY * cosine) / (resize.scale * 43);
 
     function getDelta(edge, movement, size, minOccupied, maxOccupied) {
-      if (!edge) return 0;
+        if (edge === undefined || edge === null) return 0;
       const minimum = edge < 0
         ? Math.max(1 - size, minOccupied === null ? 1 - size : -minOccupied)
         : Math.max(1 - size, maxOccupied === null ? 1 - size : maxOccupied + 1 - size);
@@ -1225,7 +1297,7 @@ export default function RoomEditor() {
   function resizeGridFromKeyboard(event, edgeX, edgeY) {
     const movementX = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
     const movementY = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
-    if ((!edgeX || !movementX) && (!edgeY || !movementY)) return;
+    if ((edgeX === 0 && edgeY === 0) || (movementX === 0 && movementY === 0)) return;
     event.preventDefault();
 
     const occupiedCoordinates = [...itemsByCell.keys()].map((key) => key.split(',').map(Number));
@@ -1235,7 +1307,7 @@ export default function RoomEditor() {
     const maxY = occupiedCoordinates.length ? Math.max(...occupiedCoordinates.map(([, y]) => y)) : null;
 
     function getDelta(edge, movement, size, minOccupied, maxOccupied) {
-      if (!edge || !movement) return 0;
+      if (edge === undefined || edge === null || movement === 0) return 0;
       const minimum = edge < 0
         ? Math.max(1 - size, minOccupied === null ? 1 - size : -minOccupied)
         : Math.max(1 - size, maxOccupied === null ? 1 - size : maxOccupied + 1 - size);
@@ -1389,12 +1461,6 @@ export default function RoomEditor() {
                   ))}
                 </select>
               </label>
-              {architecturalTool === 'label' && (
-                <label className="inspector-field architect-label-input">
-                  Room label
-                  <input value={roomLabelText} maxLength={40} onChange={(event) => setRoomLabelText(event.target.value.toUpperCase())} />
-                </label>
-              )}
               {['wall', 'door', 'window'].includes(architecturalTool) && !pendingArchitectPoint && (
                 <p className="architect-tool-hint">Drag across the plan to draw one element.</p>
               )}
@@ -1934,8 +2000,8 @@ export default function RoomEditor() {
                     <button
                       className="btn-ghost placed-item-remove"
                       type="button"
-                      onClick={() => rotateArchitecturalElement('segment', segment.id)}
-                      aria-label={`Rotate ${type.toLowerCase()} 90 degrees`}
+                      onClick={() => rotatePlacedItem(item)}
+                      aria-label={`Rotate ${catalogItem.name} 90 degrees`}
                       title="Rotate 90 degrees clockwise"
                     >
                       Rotate
@@ -2033,64 +2099,6 @@ export default function RoomEditor() {
             </div>
           )}
 
-          <div className="divider" />
-
-          <p className="panel-heading">Selected item</p>
-          {selectedItem && catalogById.get(selectedItem.catalogItemId) ? (
-            <div className="inspector-selected">
-              <p className="selected-name">{catalogById.get(selectedItem.catalogItemId).name}</p>
-              <p className="mono muted small">
-                grid ({selectedItem.gridX}, {selectedItem.gridY}) · {selectedItem.rotation}°
-              </p>
-              <div className="inspector-actions">
-                <button
-                  className="btn-ghost"
-                  type="button"
-                  onClick={rotateSelectedCounterclockwise}
-                  aria-label={`Rotate furniture left to ${(selectedItem.rotation + 270) % 360} degrees`}
-                >
-                  ↶ Rotate left
-                </button>
-                <button
-                  className="btn-ghost"
-                  type="button"
-                  onClick={rotateSelectedClockwise}
-                  aria-label={`Rotate furniture right to ${(selectedItem.rotation + 90) % 360} degrees`}
-                >
-                  ↷ Rotate right
-                </button>
-                <button className="btn-ghost danger" onClick={removeSelected}>Remove</button>
-              </div>
-              <label className="inspector-field rotation-control">
-                <span>Furniture angle <strong>{rotationDraft ?? selectedItem.rotation}°</strong></span>
-                <input
-                  type="range"
-                  min={0}
-                  max={359}
-                  step={1}
-                  value={rotationDraft ?? selectedItem.rotation}
-                  aria-label="Furniture angle from 0 to 359 degrees"
-                  onChange={(event) => setRotationDraft(Number(event.target.value))}
-                  onPointerUp={(event) => commitRotationDraft(event.currentTarget.value)}
-                  onKeyUp={(event) => commitRotationDraft(event.currentTarget.value)}
-                  onBlur={(event) => commitRotationDraft(event.currentTarget.value)}
-                />
-              </label>
-              <label className="inspector-field">
-                Color
-                <input
-                  type="color"
-                  value={
-                    selectedItem.customColor ||
-                    catalogById.get(selectedItem.catalogItemId).defaultColor
-                  }
-                  onChange={(e) => recolorSelected(e.target.value)}
-                />
-              </label>
-            </div>
-          ) : (
-            <p className="muted small">Click a placed item on the grid to edit it.</p>
-          )}
         </aside>
       </div>
       {versionPreview && (

@@ -2625,7 +2625,7 @@ a {
   grid-template-rows: repeat(var(--rows), 42px);
   gap: 1px;
   padding: 1px;
-  background: var(--grid-color, #8c7455);
+  background: var(--floor-color, #bca17a);
 }
 
 .architectural-overlay {
@@ -2680,7 +2680,7 @@ a {
 .grid-cell {
   aspect-ratio: 1 / 1;
   background: var(--floor-color, #bca17a);
-  border: 1px solid color-mix(in srgb, var(--grid-color, #8c7455) 78%, var(--floor-color, #bca17a));
+  border: 0;
   padding: 0;
   position: relative;
 }
