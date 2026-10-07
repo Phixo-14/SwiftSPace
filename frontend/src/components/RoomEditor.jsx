@@ -90,6 +90,7 @@ export default function RoomEditor() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [selectedKey, setSelectedKey] = useState(null); // "x,y" of a placed item
+  const [selectedArchitecturalElement, setSelectedArchitecturalElement] = useState(null);
   const [rotationDraft, setRotationDraft] = useState(null);
   const [hoverCell, setHoverCell] = useState(null);
   const [draggedItem, setDraggedItem] = useState(null);
@@ -433,6 +434,12 @@ export default function RoomEditor() {
   }, [placedItems, catalogById]);
 
   const selectedItem = selectedKey ? itemsByCell.get(selectedKey) : null;
+  const selectedArchitectureSegment = selectedArchitecturalElement?.kind === 'segment'
+    ? architecturalSegments.find((segment) => segment.id === selectedArchitecturalElement.id)
+    : null;
+  const selectedArchitectureLabel = selectedArchitecturalElement?.kind === 'label'
+    ? roomLabels.find((label) => label.id === selectedArchitecturalElement.id)
+    : null;
 
   const previewItem = useMemo(() => {
     if (!hoverCell) return null;
@@ -515,7 +522,9 @@ export default function RoomEditor() {
         setStatus('Enter a room label before placing it.');
         return;
       }
-      setRoomLabels((current) => [...current, { id: createPlacementId(), text, ...point }]);
+      const label = { id: createPlacementId(), text, ...point };
+      setRoomLabels((current) => [...current, label]);
+      setSelectedArchitecturalElement({ kind: 'label', id: label.id });
       setStatus(`${text} label added.`);
       return;
     }
@@ -537,6 +546,7 @@ export default function RoomEditor() {
         setStatus('Room label removed.');
       }
       setPendingArchitectPoint(null);
+      setSelectedArchitecturalElement(null);
       return;
     }
 
@@ -561,14 +571,16 @@ export default function RoomEditor() {
       return;
     }
 
-    setArchitecturalSegments((current) => [...current, {
+    const segment = {
       id: createPlacementId(),
       type: architecturalTool,
       startX: pendingArchitectPoint.x,
       startY: pendingArchitectPoint.y,
       endX: endPoint.x,
       endY: endPoint.y,
-    }]);
+    };
+    setArchitecturalSegments((current) => [...current, segment]);
+    setSelectedArchitecturalElement({ kind: 'segment', id: segment.id });
     setPendingArchitectPoint(null);
     setStatus(`${architecturalTool[0].toUpperCase()}${architecturalTool.slice(1)} added.`);
   }
@@ -581,6 +593,7 @@ export default function RoomEditor() {
       }
       const key = `${x},${y}`;
       const existing = itemsByCell.get(key);
+      setSelectedArchitecturalElement(null);
 
       if (existing) {
         setSelectedKey(key);
@@ -725,6 +738,17 @@ export default function RoomEditor() {
   function removeSelected() {
     if (!selectedItem) return;
     removeItem(selectedItem);
+  }
+
+  function removeSelectedArchitecturalElement() {
+    if (!selectedArchitecturalElement) return;
+    if (selectedArchitecturalElement.kind === 'segment') {
+      setArchitecturalSegments((current) => current.filter((segment) => segment.id !== selectedArchitecturalElement.id));
+    } else {
+      setRoomLabels((current) => current.filter((label) => label.id !== selectedArchitecturalElement.id));
+    }
+    setSelectedArchitecturalElement(null);
+    setStatus('Plan element removed.');
   }
 
   function removeItem(itemToRemove) {
@@ -1103,6 +1127,7 @@ export default function RoomEditor() {
                     onClick={() => {
                       setArchitecturalTool(tool.value);
                       setPendingArchitectPoint(null);
+                      setSelectedArchitecturalElement(null);
                       setArmedItemId(null);
                     }}
                   >
@@ -1270,6 +1295,8 @@ export default function RoomEditor() {
                   aria-label="Architectural walls, doors, windows, and room labels"
                 >
                   {architecturalSegments.map((segment) => {
+                    const isSelected = selectedArchitecturalElement?.kind === 'segment'
+                      && selectedArchitecturalElement.id === segment.id;
                     const startX = segment.startX * 43 + 1;
                     const startY = segment.startY * 43 + 1;
                     const endX = segment.endX * 43 + 1;
@@ -1282,14 +1309,25 @@ export default function RoomEditor() {
                     const doorLeaf = `M ${startX} ${startY} L ${swingX} ${swingY}`;
                     const windowOffset = wallStrokeWidth * 0.62;
                     return (
-                      <g key={segment.id}>
+                      <g
+                        key={segment.id}
+                        pointerEvents={architecturalTool === 'select' ? 'visiblePainted' : 'none'}
+                        style={{ cursor: architecturalTool === 'select' ? 'pointer' : 'default' }}
+                        onClick={(event) => {
+                          if (architecturalTool !== 'select') return;
+                          event.stopPropagation();
+                          setSelectedArchitecturalElement({ kind: 'segment', id: segment.id });
+                          setSelectedKey(null);
+                          setArmedItemId(null);
+                        }}
+                      >
                         {segment.type === 'wall' && (
-                          <line x1={startX} y1={startY} x2={endX} y2={endY} stroke="#202722" strokeWidth={wallStrokeWidth} strokeLinecap="square" />
+                          <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={isSelected ? 'var(--accent)' : '#202722'} strokeWidth={wallStrokeWidth} strokeLinecap="square" />
                         )}
                         {segment.type === 'door' && (
                           <>
                             <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={floorColor} strokeWidth={wallStrokeWidth + 2} />
-                            <path d={`${swingPath} ${doorLeaf}`} fill="none" stroke="#202722" strokeWidth="1.7" />
+                            <path d={`${swingPath} ${doorLeaf}`} fill="none" stroke={isSelected ? 'var(--accent)' : '#202722'} strokeWidth="1.7" />
                           </>
                         )}
                         {segment.type === 'window' && (
@@ -1300,7 +1338,7 @@ export default function RoomEditor() {
                               y1={startY + (isHorizontal ? -windowOffset : 0)}
                               x2={endX + (isHorizontal ? 0 : -windowOffset)}
                               y2={endY + (isHorizontal ? -windowOffset : 0)}
-                              stroke="#247e92"
+                              stroke={isSelected ? 'var(--accent)' : '#247e92'}
                               strokeWidth="1.8"
                             />
                             <line
@@ -1308,7 +1346,7 @@ export default function RoomEditor() {
                               y1={startY + (isHorizontal ? windowOffset : 0)}
                               x2={endX + (isHorizontal ? 0 : windowOffset)}
                               y2={endY + (isHorizontal ? windowOffset : 0)}
-                              stroke="#247e92"
+                              stroke={isSelected ? 'var(--accent)' : '#247e92'}
                               strokeWidth="1.8"
                             />
                           </>
@@ -1320,9 +1358,23 @@ export default function RoomEditor() {
                     const x = label.x * 43 + 1;
                     const y = label.y * 43 + 1;
                     const labelWidth = Math.max(38, label.text.length * 6.5 + 12);
+                    const isSelected = selectedArchitecturalElement?.kind === 'label'
+                      && selectedArchitecturalElement.id === label.id;
                     return (
-                      <g key={label.id} transform={`translate(${x} ${y})`}>
-                        <rect x={-labelWidth / 2} y="-11" width={labelWidth} height="22" rx="2" fill="#fbfaf6" fillOpacity="0.92" />
+                      <g
+                        key={label.id}
+                        transform={`translate(${x} ${y})`}
+                        pointerEvents={architecturalTool === 'select' ? 'visiblePainted' : 'none'}
+                        style={{ cursor: architecturalTool === 'select' ? 'pointer' : 'default' }}
+                        onClick={(event) => {
+                          if (architecturalTool !== 'select') return;
+                          event.stopPropagation();
+                          setSelectedArchitecturalElement({ kind: 'label', id: label.id });
+                          setSelectedKey(null);
+                          setArmedItemId(null);
+                        }}
+                      >
+                        <rect x={-labelWidth / 2} y="-11" width={labelWidth} height="22" rx="2" fill="#fbfaf6" fillOpacity="0.92" stroke={isSelected ? 'var(--accent)' : 'none'} strokeWidth="1.5" />
                         <text className="architectural-room-label" textAnchor="middle" dominantBaseline="middle">{label.text}</text>
                       </g>
                     );
@@ -1386,6 +1438,7 @@ export default function RoomEditor() {
                     }}
                     onClick={() => {
                       setSelectedKey(`${item.gridX},${item.gridY}`);
+                      setSelectedArchitecturalElement(null);
                       setArmedItemId(null);
                     }}
                     onDragEnd={handleDragEnd}
@@ -1577,7 +1630,10 @@ export default function RoomEditor() {
                     <button
                       className={`placed-item-name ${selectedKey === itemKey ? 'selected' : ''}`}
                       type="button"
-                      onClick={() => setSelectedKey(itemKey)}
+                      onClick={() => {
+                        setSelectedKey(itemKey);
+                        setSelectedArchitecturalElement(null);
+                      }}
                     >
                       {catalogItem.name}
                       <span className="mono muted small">({item.gridX}, {item.gridY})</span>
@@ -1598,8 +1654,27 @@ export default function RoomEditor() {
 
           <div className="divider" />
 
-          <p className="panel-heading">Selected item</p>
-          {selectedItem && catalogById.get(selectedItem.catalogItemId) ? (
+          <p className="panel-heading">{selectedArchitectureSegment || selectedArchitectureLabel ? 'Selected plan element' : 'Selected item'}</p>
+          {isDesigner && (selectedArchitectureSegment || selectedArchitectureLabel) ? (
+            <div className="inspector-selected">
+              <p className="selected-name">
+                {selectedArchitectureSegment
+                  ? `${selectedArchitectureSegment.type[0].toUpperCase()}${selectedArchitectureSegment.type.slice(1)}`
+                  : selectedArchitectureLabel.text}
+              </p>
+              <p className="mono muted small">
+                {selectedArchitectureSegment
+                  ? `(${selectedArchitectureSegment.startX}, ${selectedArchitectureSegment.startY}) to (${selectedArchitectureSegment.endX}, ${selectedArchitectureSegment.endY})`
+                  : `Room label at (${selectedArchitectureLabel.x}, ${selectedArchitectureLabel.y})`}
+              </p>
+              {selectedArchitectureSegment?.type === 'wall' && (
+                <p className="mono muted small">Wall thickness · {wallThicknessMm} mm</p>
+              )}
+              <div className="inspector-actions">
+                <button className="btn-ghost danger" type="button" onClick={removeSelectedArchitecturalElement}>Remove</button>
+              </div>
+            </div>
+          ) : selectedItem && catalogById.get(selectedItem.catalogItemId) ? (
             <div className="inspector-selected">
               <p className="selected-name">{catalogById.get(selectedItem.catalogItemId).name}</p>
               <p className="mono muted small">
