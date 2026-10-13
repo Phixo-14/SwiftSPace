@@ -103,9 +103,7 @@ export default function AdminDashboard() {
   }
 
   useEffect(() => {
-    api.post('/auth/admin/sync-firebase-users')
-      .catch(() => null)
-      .then(() => api.get('/auth/admin/overview'))
+    api.get('/auth/admin/overview')
       .then(({ data }) => setOverview(data))
       .catch((requestError) => {
         if (requestError.response?.status === 401) {
