@@ -228,7 +228,6 @@ export default function AdminDashboard() {
       setUpdatingUserRoleId(null);
     }
   }
-
   const overlapGroups = (overview?.recentOverlaps || []).reduce((groups, record) => {
     const username = record.username || 'Unknown user';
     if (!groups[username]) groups[username] = [];

@@ -26,8 +26,55 @@ function createVerificationCode() {
   return crypto.randomInt(100000, 1000000).toString();
 }
 
+function sanitizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeUsername(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function strongPassword(password) {
+  return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,72}$/.test(password || '');
+}
+
 function hashVerificationCode(code) {
   return crypto.createHash('sha256').update(code).digest('hex');
+}
+
+function getRequestIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') return forwarded.split(',')[0].trim();
+  return req.ip || 'unknown';
+}
+
+function getTotpSecret() {
+  return crypto.randomBytes(20).toString('hex');
+}
+
+function generateTotp(secret, timestamp = Date.now()) {
+  const counter = Math.floor(timestamp / 30000);
+  const bytes = Buffer.alloc(8);
+  for (let i = 7; i >= 0; i -= 1) {
+    bytes[i] = counter & 0xff;
+    counter = Math.floor(counter / 256);
+  }
+  const digest = crypto.createHmac('sha1', Buffer.from(secret, 'hex')).update(bytes).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const code = ((digest[offset] & 0x7f) << 24)
+    | ((digest[offset + 1] & 0xff) << 16)
+    | ((digest[offset + 2] & 0xff) << 8)
+    | (digest[offset + 3] & 0xff);
+  return String(code % 1000000).padStart(6, '0');
+}
+
+function verifyTotp(secret, code) {
+  if (!secret || !code) return false;
+  const normalized = String(code).replace(/\s+/g, '');
+  const now = Date.now();
+  return normalized === generateTotp(secret, now)
+    || normalized === generateTotp(secret, now - 30000)
+    || normalized === generateTotp(secret, now + 30000);
 }
 
 async function sendVerificationCode(user, code) {
@@ -91,11 +138,30 @@ function signToken(user) {
   );
 }
 
+async function issueUserSession(user, req, res) {
+  const token = signToken(user);
+  user.failedLoginAttempts = 0;
+  user.lockedUntil = null;
+  user.lastLoginAt = new Date();
+  user.lastLoginIp = getRequestIp(req);
+  await user.save();
+  res.json({
+    token,
+    user: { id: user._id, username: user.username, email: user.email, role: user.role || 'homeowner' },
+  });
+}
+
 // POST /api/auth/register
 async function register(req, res) {
   const { username, email, password, role } = req.body;
+  const cleanUsername = normalizeUsername(username);
+  const cleanEmail = sanitizeEmail(email);
 
-  const existing = await User.findOne({ $or: [{ email }, { username }] });
+  if (!strongPassword(password)) {
+    return res.status(400).json({ message: 'Password must be at least 12 characters and include upper/lowercase letters, a number, and a symbol.' });
+  }
+
+  const existing = await User.findOne({ $or: [{ email: cleanEmail }, { username: cleanUsername }] });
   if (existing) {
     if (existing.role === 'admin' || existing.emailVerified) {
       return res.status(409).json({ message: 'A user with that email or username already exists.' });
@@ -106,13 +172,14 @@ async function register(req, res) {
   const passwordHash = await bcrypt.hash(password, 10);
   const code = createVerificationCode();
   const user = await User.create({
-    username,
-    email,
+    username: cleanUsername,
+    email: cleanEmail,
     passwordHash,
     role,
     emailVerified: false,
     emailVerificationCodeHash: hashVerificationCode(code),
     emailVerificationExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    passwordChangedAt: new Date(),
   });
   const delivered = await sendVerificationCode(user, code);
   res.status(201).json({
@@ -124,13 +191,47 @@ async function register(req, res) {
   });
 }
 
+async function verifyMfaLogin(req, res) {
+  const { email, password, code } = req.body;
+  const cleanEmail = sanitizeEmail(email);
+  try {
+    const user = await User.findOne({ email: cleanEmail });
+    if (!user || !user.mfaEnabled) {
+      return res.status(401).json({ message: 'Invalid email or MFA code.' });
+    }
+
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      return res.status(423).json({ message: 'This account is temporarily locked because of repeated failed logins.' });
+    }
+
+    const match = await bcrypt.compare(password, user.passwordHash);
+    if (!match) {
+      return res.status(401).json({ message: 'Invalid email or password.' });
+    }
+
+    if (!verifyTotp(user.mfaSecret, code)) {
+      return res.status(401).json({ message: 'Invalid MFA code.' });
+    }
+
+    await issueUserSession(user, req, res);
+  } catch (error) {
+    console.error(`MFA login failed for ${cleanEmail}:`, error);
+    res.status(500).json({ message: 'MFA login service error. Check the backend logs.' });
+  }
+}
+
 // POST /api/auth/login
 async function login(req, res) {
   const { email, password } = req.body;
+  const cleanEmail = sanitizeEmail(email);
   try {
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: cleanEmail });
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password.' });
+    }
+
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      return res.status(423).json({ message: 'This account is temporarily locked because of repeated failed logins.' });
     }
 
     if (user.role !== 'admin' && !user.emailVerified) {
@@ -139,35 +240,57 @@ async function login(req, res) {
 
     const match = await bcrypt.compare(password, user.passwordHash);
     if (!match) {
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      if (user.failedLoginAttempts >= 5) {
+        user.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+      }
+      await user.save();
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
-    const token = signToken(user);
-    res.json({
-      token,
-      user: { id: user._id, username: user.username, email: user.email, role: user.role || 'homeowner' },
-    });
+    if (user.mfaEnabled) {
+      user.failedLoginAttempts = 0;
+      user.lockedUntil = null;
+      await user.save();
+      return res.status(202).json({
+        message: 'Multi-factor authentication required.',
+        requiresMfa: true,
+        email: user.email,
+      });
+    }
+
+    await issueUserSession(user, req, res);
   } catch (error) {
-    console.error(`Login failed for ${email}:`, error);
+    console.error(`Login failed for ${cleanEmail}:`, error);
     res.status(500).json({ message: 'Login service error. Check the backend logs.' });
   }
 }
 
 async function adminLogin(req, res) {
   const { email, password } = req.body;
+  const cleanEmail = sanitizeEmail(email);
   try {
-    const user = await User.findOne({ email, role: 'admin' });
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    const user = await User.findOne({ email: cleanEmail, role: 'admin' });
+    if (!user) {
       return res.status(401).json({ message: 'Invalid administrator email or password.' });
     }
 
-    const token = signToken(user);
-    res.json({
-      token,
-      user: { id: user._id, username: user.username, email: user.email, role: user.role },
-    });
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      return res.status(423).json({ message: 'This account is temporarily locked because of repeated failed logins.' });
+    }
+
+    if (!(await bcrypt.compare(password, user.passwordHash))) {
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      if (user.failedLoginAttempts >= 5) {
+        user.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+      }
+      await user.save();
+      return res.status(401).json({ message: 'Invalid administrator email or password.' });
+    }
+
+    await issueUserSession(user, req, res);
   } catch (error) {
-    console.error(`Admin login failed for ${email}:`, error);
+    console.error(`Admin login failed for ${cleanEmail}:`, error);
     res.status(500).json({ message: 'Admin login service error. Check the backend logs.' });
   }
 }
@@ -224,6 +347,60 @@ async function firebaseSync(req, res) {
 
   const token = signToken(user);
   res.json({ token, user: { id: user._id, username: user.username, email: user.email, role: user.role } });
+}
+
+async function startMfaSetup(req, res) {
+  const user = await User.findById(req.user.id).select('_id username email mfaEnabled mfaSecret');
+  if (!user) return res.status(404).json({ message: 'User not found.' });
+  if (user.mfaEnabled) {
+    return res.status(409).json({ message: 'Multi-factor authentication is already enabled.' });
+  }
+
+  const secret = getTotpSecret();
+  user.mfaSecret = secret;
+  await user.save();
+
+  const otpAuth = `otpauth://totp/SwiftSpace:${encodeURIComponent(user.email)}?secret=${secret}&issuer=SwiftSpace`;
+  res.json({
+    secret,
+    otpauth: otpAuth,
+    message: 'Scan this code in an authenticator app, then verify it with a 6-digit code.',
+  });
+}
+
+async function verifyMfaSetup(req, res) {
+  const { code } = req.body;
+  const user = await User.findById(req.user.id).select('_id username email mfaSecret mfaEnabled');
+  if (!user || !user.mfaSecret) {
+    return res.status(400).json({ message: 'MFA setup has not started.' });
+  }
+
+  if (!verifyTotp(user.mfaSecret, code)) {
+    return res.status(401).json({ message: 'Invalid MFA verification code.' });
+  }
+
+  user.mfaEnabled = true;
+  user.passwordChangedAt = new Date();
+  await user.save();
+  res.json({ message: 'Multi-factor authentication enabled successfully.' });
+}
+
+async function disableMfa(req, res) {
+  const { code } = req.body;
+  const user = await User.findById(req.user.id).select('_id username email mfaSecret mfaEnabled');
+  if (!user || !user.mfaEnabled) {
+    return res.status(400).json({ message: 'MFA is not enabled for this account.' });
+  }
+
+  if (!verifyTotp(user.mfaSecret, code)) {
+    return res.status(401).json({ message: 'Invalid MFA verification code.' });
+  }
+
+  user.mfaEnabled = false;
+  user.mfaSecret = null;
+  user.passwordChangedAt = new Date();
+  await user.save();
+  res.json({ message: 'Multi-factor authentication disabled.' });
 }
 
 async function deleteUserData(userIds) {
@@ -386,14 +563,20 @@ async function syncFirebaseUsers(req, res) {
 // POST /api/auth/admins — requires an existing admin token.
 async function createAdmin(req, res) {
   const { username, email, password } = req.body;
+  const cleanUsername = normalizeUsername(username);
+  const cleanEmail = sanitizeEmail(email);
 
-  const existing = await User.findOne({ $or: [{ email }, { username }] });
+  if (!strongPassword(password)) {
+    return res.status(400).json({ message: 'Password must be at least 12 characters and include upper/lowercase letters, a number, and a symbol.' });
+  }
+
+  const existing = await User.findOne({ $or: [{ email: cleanEmail }, { username: cleanUsername }] });
   if (existing) {
     return res.status(409).json({ message: 'A user with that email or username already exists.' });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = await User.create({ username, email, passwordHash, role: 'admin' });
+  const user = await User.create({ username: cleanUsername, email: cleanEmail, passwordHash, role: 'admin', passwordChangedAt: new Date() });
 
   res.status(201).json({
     user: { id: user._id, username: user.username, email: user.email, role: user.role },
@@ -403,14 +586,20 @@ async function createAdmin(req, res) {
 // POST /api/auth/users — requires an existing admin token.
 async function createUser(req, res) {
   const { username, email, password, role } = req.body;
+  const cleanUsername = normalizeUsername(username);
+  const cleanEmail = sanitizeEmail(email);
 
-  const existing = await User.findOne({ $or: [{ email }, { username }] });
+  if (!strongPassword(password)) {
+    return res.status(400).json({ message: 'Password must be at least 12 characters and include upper/lowercase letters, a number, and a symbol.' });
+  }
+
+  const existing = await User.findOne({ $or: [{ email: cleanEmail }, { username: cleanUsername }] });
   if (existing) {
     return res.status(409).json({ message: 'A user with that email or username already exists.' });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = await User.create({ username, email, passwordHash, role, emailVerified: true });
+  const user = await User.create({ username: cleanUsername, email: cleanEmail, passwordHash, role, emailVerified: true, passwordChangedAt: new Date() });
 
   res.status(201).json({
     user: { id: user._id, username: user.username, email: user.email, role: user.role },
@@ -420,21 +609,21 @@ async function createUser(req, res) {
 // POST /api/auth/verify-email
 async function verifyEmail(req, res) {
   const { email, code } = req.body;
-  const user = await User.findOne({ email, emailVerified: false });
+  const cleanEmail = sanitizeEmail(email);
+  const user = await User.findOne({ email: cleanEmail, emailVerified: false });
   if (!user) {
     return res.status(400).json({ message: 'Invalid or expired verification code.' });
   }
-  if (user.emailVerificationExpiresAt < new Date()
-    || !crypto.timingSafeEqual(
-      Buffer.from(user.emailVerificationCodeHash),
-      Buffer.from(hashVerificationCode(code))
-    )) {
+  const currentHash = user.emailVerificationCodeHash ? Buffer.from(user.emailVerificationCodeHash, 'hex') : null;
+  const candidateHash = Buffer.from(hashVerificationCode(code), 'hex');
+  if (user.emailVerificationExpiresAt < new Date() || !currentHash || currentHash.length !== candidateHash.length || !crypto.timingSafeEqual(currentHash, candidateHash)) {
     return res.status(400).json({ message: 'Invalid or expired verification code.' });
   }
 
   user.emailVerified = true;
   user.emailVerificationCodeHash = null;
   user.emailVerificationExpiresAt = null;
+  user.passwordChangedAt = new Date();
   await user.save();
   const token = signToken(user);
   res.json({ token, user: { id: user._id, username: user.username, email: user.email, role: user.role } });
@@ -442,7 +631,8 @@ async function verifyEmail(req, res) {
 
 // POST /api/auth/resend-verification
 async function resendVerification(req, res) {
-  const user = await User.findOne({ email: req.body.email, emailVerified: false });
+  const cleanEmail = sanitizeEmail(req.body.email);
+  const user = await User.findOne({ email: cleanEmail, emailVerified: false });
   if (user) {
     const code = createVerificationCode();
     user.emailVerificationCodeHash = hashVerificationCode(code);

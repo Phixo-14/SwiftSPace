@@ -7,13 +7,19 @@ const crypto = require('crypto');
 const registerSchema = Joi.object({
   username: Joi.string().trim().min(3).max(30).pattern(/^[A-Za-z]+(?: [A-Za-z]+)+$/).required(),
   email: Joi.string().email({ tlds: false }).required(),
-  password: Joi.string().min(8).max(72).pattern(/[^A-Za-z0-9]/).required(),
+  password: Joi.string().min(12).max(72)
+    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/)
+    .required(),
   role: Joi.string().valid('homeowner', 'interior-designer').default('homeowner'),
 });
 
 const loginSchema = Joi.object({
   email: Joi.string().email({ tlds: false }).required(),
   password: Joi.string().min(8).max(72).pattern(/[^A-Za-z0-9]/).required(),
+});
+
+const mfaSchema = Joi.object({
+  code: Joi.string().pattern(/^\d{6}$/).required(),
 });
 
 const verificationSchema = Joi.object({

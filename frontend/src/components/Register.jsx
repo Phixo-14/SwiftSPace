@@ -26,8 +26,8 @@ export default function Register() {
       setError('Please enter a valid email address.');
       return;
     }
-    if (password.length < 8 || !/[^A-Za-z0-9]/.test(password)) {
-      setError('Password must be at least 8 characters and include a special character.');
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/.test(password)) {
+      setError('Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.');
       return;
     }
     setLoading(true);
@@ -131,9 +131,9 @@ export default function Register() {
               <PasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                minLength={8}
-                pattern="(?=.*[^A-Za-z0-9]).{8,}"
-                title="Password must be at least 8 characters and include a special character."
+                minLength={12}
+                pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}"
+                title="Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol."
                 required
               />
             </label>

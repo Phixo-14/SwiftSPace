@@ -10,6 +10,13 @@ const UserSchema = new mongoose.Schema(
     emailVerified: { type: Boolean, default: false },
     emailVerificationCodeHash: { type: String, default: null },
     emailVerificationExpiresAt: { type: Date, default: null },
+    passwordChangedAt: { type: Date, default: Date.now },
+    mfaEnabled: { type: Boolean, default: false },
+    mfaSecret: { type: String, default: null, select: false },
+    failedLoginAttempts: { type: Number, default: 0 },
+    lockedUntil: { type: Date, default: null },
+    lastLoginAt: { type: Date, default: null },
+    lastLoginIp: { type: String, default: null },
   },
   { timestamps: true }
 );

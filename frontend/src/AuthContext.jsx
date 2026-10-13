@@ -1,40 +1,40 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+﻿import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import api from './api.js';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('rd_user');
+    const saved = sessionStorage.getItem('rd_user');
     return saved ? JSON.parse(saved) : null;
   });
 
   const login = useCallback((token, userData) => {
-    localStorage.setItem('rd_token', token);
-    localStorage.setItem('rd_user', JSON.stringify(userData));
+    sessionStorage.setItem('rd_token', token);
+    sessionStorage.setItem('rd_user', JSON.stringify(userData));
     setUser(userData);
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem('rd_token');
-    localStorage.removeItem('rd_user');
+    sessionStorage.removeItem('rd_token');
+    sessionStorage.removeItem('rd_user');
     setUser(null);
   }, []);
 
   useEffect(() => {
-    if (!localStorage.getItem('rd_token')) return undefined;
+    if (!sessionStorage.getItem('rd_token')) return undefined;
     let active = true;
 
     async function refreshCurrentUser() {
-      const token = localStorage.getItem('rd_token');
+      const token = sessionStorage.getItem('rd_token');
       if (!token) return;
       try {
         const { data } = await api.get('/auth/me');
-        if (!active || localStorage.getItem('rd_token') !== token) return;
-        localStorage.setItem('rd_user', JSON.stringify(data.user));
+        if (!active || sessionStorage.getItem('rd_token') !== token) return;
+        sessionStorage.setItem('rd_user', JSON.stringify(data.user));
         setUser(data.user);
       } catch (error) {
-        if (active && localStorage.getItem('rd_token') === token && error.response?.status === 401) {
+        if (active && sessionStorage.getItem('rd_token') === token && error.response?.status === 401) {
           logout();
         }
       }

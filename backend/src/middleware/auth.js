@@ -13,8 +13,15 @@ async function requireAuth(req, res, next) {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(payload.id).select('_id username email role');
+    const user = await User.findById(payload.id).select('_id username email role passwordChangedAt');
     if (!user) return res.status(401).json({ message: 'Invalid or expired token.' });
+
+    const passwordChangedAt = user.passwordChangedAt ? new Date(user.passwordChangedAt).getTime() : 0;
+    const issuedAt = payload.iat ? payload.iat * 1000 : 0;
+    if (issuedAt < passwordChangedAt) {
+      return res.status(401).json({ message: 'Your session expired because your password was changed.' });
+    }
+
     req.user = { id: user._id.toString(), username: user.username, email: user.email, role: user.role || 'homeowner' };
     next();
   } catch (err) {

@@ -20,20 +20,41 @@ const { systemLoggingMiddleware, writeSystemLog } = require('./src/middleware/sy
 
 const app = express();
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
   throw new Error('JWT_SECRET must be at least 32 characters long.');
 }
 
-const allowedOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
-app.use(helmet());
+const allowedOrigins = [process.env.CLIENT_ORIGIN, 'http://localhost:5173', 'http://127.0.0.1:5173']
+  .filter(Boolean);
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ['\'self\''],
+      scriptSrc: ['\'self\''],
+      objectSrc: ['\'none\''],
+      upgradeInsecureRequests: [],
+    },
+  },
+  crossOriginResourcePolicy: false,
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+}));
 app.use((req, res, next) => {
   if (process.env.NODE_ENV === 'production' && req.get('x-forwarded-proto') === 'http') {
     return res.redirect(`https://${req.get('host')}${req.originalUrl}`);
   }
   next();
 });
-app.use(cors({ origin: allowedOrigin }));
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Origin not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use(express.json({ limit: '100kb' }));
 app.use(morgan('dev'));
 app.use('/api', systemLoggingMiddleware);
