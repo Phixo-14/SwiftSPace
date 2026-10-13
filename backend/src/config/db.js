@@ -9,13 +9,32 @@ async function connectDB() {
   if (!uri) {
     throw new Error('MONGO_URI is not set. Copy .env.example to .env and configure it.');
   }
+  if (!/^mongodb(\+srv)?:\/\//i.test(uri)) {
+    throw new Error('MONGO_URI must start with mongodb:// or mongodb+srv://. Check backend/.env.');
+  }
+
   mongoose.set('strictQuery', true);
   const dnsServers = (process.env.MONGO_DNS_SERVERS || '1.1.1.1,8.8.8.8')
     .split(',')
     .map((server) => server.trim())
     .filter(Boolean);
   if (dnsServers.length) dns.setServers(dnsServers);
-  await mongoose.connect(uri);
+
+  try {
+    await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 15000,
+      retryWrites: true,
+    });
+  } catch (error) {
+    const message = String(error?.message || error);
+    if (/bad auth|authentication failed/i.test(message)) {
+      throw new Error(
+        'MongoDB authentication failed. Check the username/password in backend/.env MONGO_URI, then verify the database user is allowed and the current IP is whitelisted in MongoDB Atlas.'
+      );
+    }
+    throw error;
+  }
+
   await migrateLegacyCollections();
   await ensureCollections();
   console.log(`MongoDB connected -> ${mongoose.connection.host}/${mongoose.connection.name}`);

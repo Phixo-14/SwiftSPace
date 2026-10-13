@@ -25,18 +25,33 @@ export function AuthProvider({ children }) {
     if (!localStorage.getItem('rd_token')) return undefined;
     let active = true;
 
-    api.get('/auth/me')
-      .then(({ data }) => {
-        if (!active) return;
+    async function refreshCurrentUser() {
+      const token = localStorage.getItem('rd_token');
+      if (!token) return;
+      try {
+        const { data } = await api.get('/auth/me');
+        if (!active || localStorage.getItem('rd_token') !== token) return;
         localStorage.setItem('rd_user', JSON.stringify(data.user));
         setUser(data.user);
-      })
-      .catch((error) => {
-        if (active && error.response?.status === 401) logout();
-      });
+      } catch (error) {
+        if (active && localStorage.getItem('rd_token') === token && error.response?.status === 401) {
+          logout();
+        }
+      }
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === 'visible') refreshCurrentUser();
+    }
+
+    refreshCurrentUser();
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
 
     return () => {
       active = false;
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
   }, [logout]);
 

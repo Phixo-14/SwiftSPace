@@ -1,8 +1,8 @@
 const express = require('express');
-const { register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview } = require('../controllers/authController');
+const { register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, createAdmin, createUser, deleteUser, updateUserRole, verifyEmail, resendVerification, getAdminOverview } = require('../controllers/authController');
 const { getSystemLogs } = require('../controllers/systemLogController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { validateBody, registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema } = require('../middleware/validators');
+const { validateBody, registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, userRoleSchema } = require('../middleware/validators');
 const { loginLimiter } = require('../middleware/rateLimiters');
 
 const router = express.Router();
@@ -19,6 +19,7 @@ router.post('/verify-email', validateBody(verificationSchema), verifyEmail);
 router.post('/resend-verification', validateBody(emailSchema), resendVerification);
 router.post('/admins', requireAuth, requireAdmin, validateBody(adminSchema), createAdmin);
 router.post('/users', requireAuth, requireAdmin, validateBody(registerSchema), createUser);
+router.patch('/users/:id/role', requireAuth, requireAdmin, validateBody(userRoleSchema), updateUserRole);
 router.delete('/users/:id', requireAuth, requireAdmin, deleteUser);
 router.get('/admin/overview', requireAuth, requireAdmin, getAdminOverview);
 router.get('/admin/logs', requireAuth, requireAdmin, getSystemLogs);

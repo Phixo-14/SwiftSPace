@@ -103,7 +103,7 @@ export default function VerifyEmail() {
   return (
     <div className="auth-shell">
       <div className="auth-card verification-card">
-        <p className="eyebrow">Studio Grid</p>
+        <p className="eyebrow">SwiftSpace</p>
         <h1>Verify your email</h1>
         <p className="auth-sub">
           {firebaseLinkHandled

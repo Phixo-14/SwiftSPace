@@ -48,13 +48,29 @@ const accountDeleteSchema = Joi.object({
 }).default({});
 
 const adminSchema = registerSchema.keys({ role: Joi.forbidden() });
+const userRoleSchema = Joi.object({
+  role: Joi.string().valid('homeowner', 'interior-designer').required(),
+});
+
+function quarterGridNumber(minimum = 0) {
+  return Joi.number().min(minimum).max(50).custom((value, helpers) => {
+    if (Math.abs(value * 4 - Math.round(value * 4)) > 1e-8) {
+      return helpers.error('number.multiple');
+    }
+    return value;
+  });
+}
 
 const placedItemSchema = Joi.object({
   placementId: Joi.string().trim().min(1).max(64).default(() => crypto.randomUUID()),
   catalogItemId: Joi.string().hex().length(24).required(),
-  gridX: Joi.number().integer().min(0).required(),
-  gridY: Joi.number().integer().min(0).required(),
+  gridX: quarterGridNumber().required(),
+  gridY: quarterGridNumber().required(),
   rotation: Joi.number().integer().min(0).max(359).default(0),
+  size: Joi.object({
+    width: quarterGridNumber(0.25).required(),
+    length: quarterGridNumber(0.25).required(),
+  }).optional(),
   customColor: Joi.string()
     .pattern(/^#[0-9A-Fa-f]{6}$/)
     .allow(null)
@@ -63,8 +79,8 @@ const placedItemSchema = Joi.object({
 
 const overlapRecordSchema = Joi.object({
   catalogItemId: Joi.string().hex().length(24).required(),
-  gridX: Joi.number().integer().min(0).required(),
-  gridY: Joi.number().integer().min(0).required(),
+  gridX: quarterGridNumber().required(),
+  gridY: quarterGridNumber().required(),
   rotation: Joi.number().integer().min(0).max(359).default(0),
   reason: Joi.string().trim().max(180).required(),
   occurredAt: Joi.date().default(() => new Date()),
@@ -87,6 +103,10 @@ const roomSchema = Joi.object({
     width: Joi.number().integer().min(1).max(50).required(),
     length: Joi.number().integer().min(1).max(50).required(),
   }).required(),
+  floorCells: Joi.array().max(2500).unique((first, second) => first.x === second.x && first.y === second.y).items(Joi.object({
+    x: Joi.number().integer().min(0).max(49).required(),
+    y: Joi.number().integer().min(0).max(49).required(),
+  })).optional(),
   floorColor: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).default('#BCA17A'),
   gridColor: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).default('#8C7455'),
   wallThicknessMm: Joi.number().integer().min(80).max(400).default(150),
@@ -132,4 +152,4 @@ function validateBody(schema) {
   };
 }
 
-module.exports = { registerSchema, loginSchema, verificationSchema, emailSchema, projectFolderSchema, roomFolderSchema, firebaseSyncSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, roomSchema, roomVersionSchema, validateBody };
+module.exports = { registerSchema, loginSchema, verificationSchema, emailSchema, projectFolderSchema, roomFolderSchema, firebaseSyncSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, userRoleSchema, roomSchema, roomVersionSchema, validateBody };

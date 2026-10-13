@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, Link } from 'react-router-dom';
 import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 import ItemGlyph from './ItemGlyph.jsx';
@@ -39,6 +39,29 @@ function readDraft(key) {
 function createPlacementId() {
   return globalThis.crypto?.randomUUID?.()
     || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeQuarterGrid(value) {
+  return Math.round(Number(value) * 4) / 4;
+}
+
+function createFloorCells(dimensions) {
+  return Array.from({ length: dimensions.width * dimensions.length }, (_, index) => ({
+    x: index % dimensions.width,
+    y: Math.floor(index / dimensions.width),
+  }));
+}
+
+function getFloorBoundaryEdges(floorCells) {
+  const occupied = new Set(floorCells.map(({ x, y }) => `${x},${y}`));
+  const edges = [];
+  floorCells.forEach(({ x, y }) => {
+    if (!occupied.has(`${x - 1},${y}`)) edges.push({ x1: x, y1: y, x2: x, y2: y + 1 });
+    if (!occupied.has(`${x + 1},${y}`)) edges.push({ x1: x + 1, y1: y, x2: x + 1, y2: y + 1 });
+    if (!occupied.has(`${x},${y - 1}`)) edges.push({ x1: x, y1: y, x2: x + 1, y2: y });
+    if (!occupied.has(`${x},${y + 1}`)) edges.push({ x1: x, y1: y + 1, x2: x + 1, y2: y + 1 });
+  });
+  return edges;
 }
 
 function distanceToSegment(point, segment) {
@@ -82,10 +105,11 @@ function snapArchitecturalPoint(point, dimensions) {
 export default function RoomEditor() {
   const { id } = useParams();
   const isNew = !id;
+  const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const isDesigner = user?.role === 'interior-designer' || user?.role === 'admin';
-  const draftStorageKey = `studio-grid-draft:${id || 'new'}`;
+  const draftStorageKey = `studio-grid-draft:${user?.id || 'signed-out'}:${id || `new:${location.key}`}`;
   const storedDraft = readDraft(draftStorageKey);
 
   const [catalog, setCatalog] = useState([]);
@@ -98,6 +122,9 @@ export default function RoomEditor() {
   const timerRunningRef = useRef(true);
   const lastActivityRef = useRef(Date.now());
   const [dimensions, setDimensions] = useState(storedDraft?.dimensions || DEFAULT_DIMENSIONS);
+  const [floorCells, setFloorCells] = useState(
+    storedDraft?.floorCells?.length ? storedDraft.floorCells : createFloorCells(storedDraft?.dimensions || DEFAULT_DIMENSIONS)
+  );
   const [floorColor, setFloorColor] = useState(storedDraft?.floorColor || FLOOR_OPTIONS[0].floor);
   const [gridColor, setGridColor] = useState(storedDraft?.gridColor || FLOOR_OPTIONS[0].grid);
   const [wallThicknessMm, setWallThicknessMm] = useState(storedDraft?.wallThicknessMm || 150);
@@ -107,6 +134,7 @@ export default function RoomEditor() {
   const [pendingArchitectPoint, setPendingArchitectPoint] = useState(null);
   const [architecturalDragEnd, setArchitecturalDragEnd] = useState(null);
   const [architecturalDragDelta, setArchitecturalDragDelta] = useState({ x: 0, y: 0 });
+  const [architecturalSegmentDraft, setArchitecturalSegmentDraft] = useState(null);
   const [roomLabelText, setRoomLabelText] = useState('ROOM');
   const [workspaceColor, setWorkspaceColor] = useState(() => {
     const draftFloor = FLOOR_OPTIONS.find((option) => option.floor === storedDraft?.floorColor);
@@ -120,11 +148,14 @@ export default function RoomEditor() {
   const [selectedKey, setSelectedKey] = useState(null); // "x,y" of a placed item
   const [selectedArchitecturalElement, setSelectedArchitecturalElement] = useState(null);
   const [rotationDraft, setRotationDraft] = useState(null);
+  const [resizeDraft, setResizeDraft] = useState(null);
+  const [furnitureMoveDraft, setFurnitureMoveDraft] = useState(null);
   const [hoverCell, setHoverCell] = useState(null);
   const [draggedItem, setDraggedItem] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [fitZoom, setFitZoom] = useState(1);
   const [platformRotation, setPlatformRotation] = useState(0);
+  const [showFloorExtensions, setShowFloorExtensions] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [status, setStatus] = useState('');
@@ -146,9 +177,23 @@ export default function RoomEditor() {
   const historyReadyScopeRef = useRef(null);
   const canvasWrapRef = useRef(null);
   const gridResizeRef = useRef(null);
+  const furnitureResizeRef = useRef(null);
   const architecturalDragRef = useRef(null);
+  const extensionDragRef = useRef(false);
   const suppressGridClickRef = useRef(false);
   const catalogDragRef = useRef(false);
+
+  useEffect(() => {
+    const stopExtensionDrag = () => {
+      extensionDragRef.current = false;
+    };
+    window.addEventListener('pointerup', stopExtensionDrag);
+    window.addEventListener('pointercancel', stopExtensionDrag);
+    return () => {
+      window.removeEventListener('pointerup', stopExtensionDrag);
+      window.removeEventListener('pointercancel', stopExtensionDrag);
+    };
+  }, []);
 
   function getEditorSnapshot(snapshotPlacedItems = placedItems) {
     return JSON.stringify({
@@ -157,6 +202,7 @@ export default function RoomEditor() {
       measurements,
       designNotes,
       dimensions,
+      floorCells,
       floorColor,
       gridColor,
       wallThicknessMm,
@@ -174,6 +220,7 @@ export default function RoomEditor() {
     setMeasurements(snapshot.measurements);
     setDesignNotes(snapshot.designNotes);
     setDimensions(snapshot.dimensions);
+    setFloorCells(snapshot.floorCells || createFloorCells(snapshot.dimensions));
     setFloorColor(snapshot.floorColor);
     setGridColor(snapshot.gridColor);
     setWallThicknessMm(snapshot.wallThicknessMm || 150);
@@ -227,6 +274,7 @@ export default function RoomEditor() {
         setDesignNotes(draft.designNotes || '');
         setTimerSeconds(draft.timerSeconds || 0);
         setDimensions(draft.dimensions || DEFAULT_DIMENSIONS);
+        setFloorCells(draft.floorCells?.length ? draft.floorCells : createFloorCells(draft.dimensions || DEFAULT_DIMENSIONS));
         setFloorColor(draft.floorColor || FLOOR_OPTIONS[0].floor);
         setGridColor(draft.gridColor || FLOOR_OPTIONS[0].grid);
         if (isDesigner) {
@@ -271,6 +319,9 @@ export default function RoomEditor() {
           setDesignNotes(roomRes.data.designNotes || '');
           setTimerSeconds(roomRes.data.timerSeconds || 0);
           setDimensions(roomRes.data.dimensions);
+          setFloorCells(roomRes.data.floorCells?.length
+            ? roomRes.data.floorCells
+            : createFloorCells(roomRes.data.dimensions));
           setFloorColor(roomRes.data.floorColor || FLOOR_OPTIONS[0].floor);
           setGridColor(roomRes.data.gridColor || FLOOR_OPTIONS[0].grid);
           setWallThicknessMm(roomRes.data.wallThicknessMm || 150);
@@ -284,8 +335,12 @@ export default function RoomEditor() {
 
         restoreDraft();
       } catch (err) {
-        restoreDraft();
-        if (!cancelled) setStatus('Could not load room data.');
+        if (isNew) restoreDraft();
+        if (!cancelled) {
+          setStatus(err.response?.status === 403 || err.response?.status === 404
+            ? 'This room is not available in the current account.'
+            : 'Could not load room data.');
+        }
       } finally {
         if (!cancelled) {
           historyReadyScopeRef.current = historyScope;
@@ -328,13 +383,14 @@ export default function RoomEditor() {
       designNotes,
       timerSeconds,
       dimensions,
+      floorCells,
       floorColor,
       gridColor,
       ...(isDesigner ? { wallThicknessMm, architecturalSegments, roomLabels } : {}),
       placedItems,
       overlapRecords,
     }));
-  }, [architecturalSegments, clientName, designNotes, dimensions, draftReady, draftStorageKey, floorColor, gridColor, isDesigner, loading, measurements, overlapRecords, placedItems, roomLabels, roomName, timerSeconds, wallThicknessMm]);
+  }, [architecturalSegments, clientName, designNotes, dimensions, draftReady, draftStorageKey, floorCells, floorColor, gridColor, isDesigner, loading, measurements, overlapRecords, placedItems, roomLabels, roomName, timerSeconds, wallThicknessMm]);
 
   useEffect(() => {
     if (loading || !draftReady) return;
@@ -366,7 +422,7 @@ export default function RoomEditor() {
     history.future = [];
     setCanUndo(true);
     setCanRedo(false);
-  }, [architecturalSegments, clientName, designNotes, dimensions, draftReady, floorColor, gridColor, id, loading, measurements, overlapRecords, placedItems, roomLabels, roomName, wallThicknessMm]);
+  }, [architecturalSegments, clientName, designNotes, dimensions, draftReady, floorCells, floorColor, gridColor, id, loading, measurements, overlapRecords, placedItems, roomLabels, roomName, wallThicknessMm]);
 
   useEffect(() => {
     if (loading || !draftReady) return undefined;
@@ -421,45 +477,166 @@ export default function RoomEditor() {
     const catalogItem = catalogById.get(item.catalogItemId);
     if (!catalogItem) return [{ x: 0, y: 0 }];
 
+    const bounds = getFurnitureBounds(item, rotation, catalogItem);
+    const minCellX = Math.floor(item.gridX);
+    const minCellY = Math.floor(item.gridY);
+    const maxCellX = Math.ceil(item.gridX + bounds.width - 1e-9);
+    const maxCellY = Math.ceil(item.gridY + bounds.length - 1e-9);
+    return Array.from(
+      { length: (maxCellX - minCellX) * (maxCellY - minCellY) },
+      (_, index) => ({
+        x: minCellX + index % (maxCellX - minCellX) - item.gridX,
+        y: minCellY + Math.floor(index / (maxCellX - minCellX)) - item.gridY,
+      })
+    );
+  }
+
+  function getFurnitureBounds(item, rotation = item.rotation, catalogItem = catalogById.get(item.catalogItemId)) {
+    if (!catalogItem) return { minX: 0, minY: 0, width: 1, length: 1 };
+    const footprintWidth = item.size?.width || catalogItem.footprint.width;
+    const footprintLength = item.size?.length || catalogItem.footprint.length;
     const radians = (rotation * Math.PI) / 180;
     const cosine = Math.abs(Math.cos(radians));
     const sine = Math.abs(Math.sin(radians));
-    const boundsWidth = Math.max(1, Math.ceil(
-      catalogItem.footprint.length * cosine + catalogItem.footprint.width * sine - 1e-9
-    ));
-    const boundsLength = Math.max(1, Math.ceil(
-      catalogItem.footprint.length * sine + catalogItem.footprint.width * cosine - 1e-9
-    ));
-
-    return Array.from({ length: boundsWidth * boundsLength }, (_, index) => ({
-      x: index % boundsWidth,
-      y: Math.floor(index / boundsWidth),
-    }));
+    return {
+      minX: 0,
+      minY: 0,
+      width: Math.max(0.25, footprintWidth * cosine + footprintLength * sine),
+      length: Math.max(0.25, footprintWidth * sine + footprintLength * cosine),
+    };
   }
 
-  function getOccupiedBounds(cells) {
-    const xs = cells.map(({ x }) => x);
-    const ys = cells.map(({ y }) => y);
-    const minX = Math.min(...xs);
-    const minY = Math.min(...ys);
-    const maxX = Math.max(...xs);
-    const maxY = Math.max(...ys);
+  function furnitureOverlaps(candidate, ignoredItems = []) {
+    const candidateBounds = getFurnitureBounds(candidate);
+    const epsilon = 1e-9;
+    return placedItems.some((item) => {
+      if (item === candidate || ignoredItems.some((ignored) => (
+        ignored && (item === ignored || item.placementId === ignored.placementId)
+      ))) return false;
+      const bounds = getFurnitureBounds(item);
+      return candidate.gridX < item.gridX + bounds.width - epsilon
+        && candidate.gridX + candidateBounds.width > item.gridX + epsilon
+        && candidate.gridY < item.gridY + bounds.length - epsilon
+        && candidate.gridY + candidateBounds.length > item.gridY + epsilon;
+    });
+  }
+
+  function getClampedFurniturePosition(item, gridX, gridY) {
+    const bounds = getFurnitureBounds(item);
+    const maxX = dimensions.width - bounds.width;
+    const maxY = dimensions.length - bounds.length;
+    if (maxX < 0 || maxY < 0) return null;
     return {
-      minX,
-      minY,
-      width: maxX - minX + 1,
-      length: maxY - minY + 1,
+      gridX: Math.max(0, Math.min(maxX, gridX)),
+      gridY: Math.max(0, Math.min(maxY, gridY)),
     };
+  }
+
+  function getFurnitureImagePosition(gridX, gridY, bounds) {
+    const horizontal = gridX <= 0
+      ? 'left'
+      : gridX + bounds.width >= dimensions.width ? 'right' : 'center';
+    const vertical = gridY <= 0
+      ? 'top'
+      : gridY + bounds.length >= dimensions.length ? 'bottom' : 'center';
+    return `${horizontal} ${vertical}`;
+  }
+
+  function isPointOnRoomFloor(x, y) {
+    const epsilon = 1e-7;
+    for (let cellY = Math.floor(y) - 1; cellY <= Math.floor(y) + 1; cellY += 1) {
+      for (let cellX = Math.floor(x) - 1; cellX <= Math.floor(x) + 1; cellX += 1) {
+        if (floorCellSet.has(`${cellX},${cellY}`)
+          && x >= cellX - epsilon && x <= cellX + 1 + epsilon
+          && y >= cellY - epsilon && y <= cellY + 1 + epsilon) return true;
+      }
+    }
+    return false;
+  }
+
+  function isSegmentOnRoomFloor(segment) {
+    const length = Math.hypot(segment.endX - segment.startX, segment.endY - segment.startY);
+    const steps = Math.max(1, Math.ceil(length * 4));
+    for (let step = 0; step <= steps; step += 1) {
+      const progress = step / steps;
+      const x = segment.startX + (segment.endX - segment.startX) * progress;
+      const y = segment.startY + (segment.endY - segment.startY) * progress;
+      if (!isPointOnRoomFloor(x, y)) return false;
+    }
+    return true;
+  }
+
+  function extendRoomAt(x, y) {
+    const floor = new Set(floorCells.map(({ x: floorX, y: floorY }) => `${floorX},${floorY}`));
+    const key = `${x},${y}`;
+    if (floor.has(key) || ![[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]
+      .some(([neighborX, neighborY]) => floor.has(`${neighborX},${neighborY}`))) return;
+
+    const shiftX = x < 0 ? 1 : 0;
+    const shiftY = y < 0 ? 1 : 0;
+    const nextWidth = dimensions.width + (x < 0 || x >= dimensions.width ? 1 : 0);
+    const nextLength = dimensions.length + (y < 0 || y >= dimensions.length ? 1 : 0);
+    if (nextWidth > 50 || nextLength > 50) {
+      setStatus('Room dimensions cannot exceed 50 grid cells.');
+      return;
+    }
+
+    const shifted = floorCells.map((cell) => ({ x: cell.x + shiftX, y: cell.y + shiftY }));
+    shifted.push({ x: x + shiftX, y: y + shiftY });
+    setFloorCells(shifted);
+    setDimensions({ width: nextWidth, length: nextLength });
+    const widthDelta = nextWidth - dimensions.width;
+    const lengthDelta = nextLength - dimensions.length;
+    const edgeX = x < 0 ? -1 : x >= dimensions.width ? 1 : 0;
+    const edgeY = y < 0 ? -1 : y >= dimensions.length ? 1 : 0;
+    updateArchitectureWithRoomResize(
+      dimensions,
+      widthDelta,
+      lengthDelta,
+      shiftX,
+      shiftY,
+      edgeX,
+      edgeY
+    );
+    if (shiftX || shiftY) {
+      setPlacedItems((current) => current.map((item) => ({
+        ...item,
+        gridX: item.gridX + shiftX,
+        gridY: item.gridY + shiftY,
+      })));
+      if (selectedKey) {
+        const [selectedX, selectedY] = selectedKey.split(',').map(Number);
+        setSelectedKey(`${selectedX + shiftX},${selectedY + shiftY}`);
+      }
+    }
+    setHoverCell(null);
+    setStatus('');
+  }
+
+  function beginFloorExtensionDrag(event, x, y) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    extensionDragRef.current = true;
+    extendRoomAt(x, y);
+  }
+
+  function continueFloorExtensionDrag(x, y) {
+    if (extensionDragRef.current) extendRoomAt(x, y);
+  }
+
+  function activateFloorExtensionByKeyboard(event, x, y) {
+    if (event.detail === 0) extendRoomAt(x, y);
   }
 
   function furnitureTouchesDoor(item) {
     const epsilon = 1e-9;
-    const cells = getOccupiedCells(item).map(({ x, y }) => ({
-      left: item.gridX + x,
-      top: item.gridY + y,
-      right: item.gridX + x + 1,
-      bottom: item.gridY + y + 1,
-    }));
+    const bounds = getFurnitureBounds(item);
+    const itemBounds = {
+      left: item.gridX,
+      top: item.gridY,
+      right: item.gridX + bounds.width,
+      bottom: item.gridY + bounds.length,
+    };
 
     return architecturalSegments.some((segment) => {
       if (segment.type !== 'door') return false;
@@ -469,11 +646,11 @@ export default function RoomEditor() {
       const maxY = Math.max(segment.startY, segment.endY);
       const horizontal = Math.abs(segment.startY - segment.endY) < epsilon;
 
-      return cells.some((cell) => horizontal
-        ? segment.startY >= cell.top - epsilon && segment.startY <= cell.bottom + epsilon
-          && maxX >= cell.left - epsilon && minX <= cell.right + epsilon
-        : segment.startX >= cell.left - epsilon && segment.startX <= cell.right + epsilon
-          && maxY >= cell.top - epsilon && minY <= cell.bottom + epsilon);
+      return horizontal
+        ? segment.startY >= itemBounds.top - epsilon && segment.startY <= itemBounds.bottom + epsilon
+          && maxX >= itemBounds.left - epsilon && minX <= itemBounds.right + epsilon
+        : segment.startX >= itemBounds.left - epsilon && segment.startX <= itemBounds.right + epsilon
+          && maxY >= itemBounds.top - epsilon && minY <= itemBounds.bottom + epsilon;
     });
   }
 
@@ -490,6 +667,20 @@ export default function RoomEditor() {
   }, [placedItems, catalogById]);
 
   const selectedItem = selectedKey ? itemsByCell.get(selectedKey) : null;
+  const floorCellSet = useMemo(
+    () => new Set(floorCells.map(({ x, y }) => `${x},${y}`)),
+    [floorCells]
+  );
+  const exposedFloorCells = useMemo(() => {
+    const exposed = new Map();
+    floorCells.forEach(({ x, y }) => {
+      [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]].forEach(([nextX, nextY]) => {
+        const key = `${nextX},${nextY}`;
+        if (!floorCellSet.has(key)) exposed.set(key, { x: nextX, y: nextY });
+      });
+    });
+    return [...exposed.values()];
+  }, [floorCellSet, floorCells]);
 
   const previewItem = useMemo(() => {
     if (!hoverCell) return null;
@@ -506,25 +697,30 @@ export default function RoomEditor() {
     const catalogItem = catalogById.get(activeItem.catalogItemId);
     if (!catalogItem) return null;
 
-    const candidate = {
+    const requestedCandidate = {
       catalogItemId: activeItem.catalogItemId,
       gridX: hoverCell.x,
       gridY: hoverCell.y,
       rotation: activeItem.rotation,
     };
+    const position = getClampedFurniturePosition(requestedCandidate, hoverCell.x, hoverCell.y);
+    const candidate = position
+      ? { ...requestedCandidate, ...position }
+      : requestedCandidate;
     const occupiedCells = getOccupiedCells(candidate);
     const doorOverlap = furnitureTouchesDoor(candidate);
-
-    const canPlace = !doorOverlap && occupiedCells.every(({ x, y }) => {
-      const cellX = hoverCell.x + x;
-      const cellY = hoverCell.y + y;
-      const occupant = itemsByCell.get(`${cellX},${cellY}`);
+    const overlapsOtherFurniture = furnitureOverlaps(candidate, [draggedItem]);
+    const fitsOnFloor = occupiedCells.every(({ x, y }) => {
+      const cellX = candidate.gridX + x;
+      const cellY = candidate.gridY + y;
       return cellX >= 0 && cellY >= 0
         && cellX < dimensions.width && cellY < dimensions.length
-        && (!occupant || occupant === draggedItem || occupant === selectedItem);
+        && floorCellSet.has(`${cellX},${cellY}`);
     });
 
-    const bounds = getOccupiedBounds(occupiedCells);
+    const canPlace = Boolean(position) && fitsOnFloor && !doorOverlap && !overlapsOtherFurniture;
+
+    const bounds = getFurnitureBounds(candidate, activeItem.rotation, catalogItem);
     return {
       ...candidate,
       catalogItem,
@@ -533,14 +729,20 @@ export default function RoomEditor() {
       canPlace,
       reason: doorOverlap
         ? 'Furniture overlaps a door opening.'
-        : canPlace ? null : 'Furniture overlap: this placement conflicts with another item or leaves the room.',
+        : overlapsOtherFurniture
+          ? 'Furniture overlap: this placement conflicts with another item.'
+        : !position
+          ? 'This furniture footprint is larger than the room.'
+          : !fitsOnFloor
+            ? 'Furniture must fit fully on the room floor.'
+            : null,
     };
-  }, [architecturalSegments, armedItemId, catalogById, dimensions, draggedItem, hoverCell, itemsByCell, selectedItem]);
+  }, [architecturalSegments, armedItemId, catalogById, dimensions, draggedItem, floorCellSet, hoverCell, itemsByCell, selectedItem]);
 
   const previewCellSet = useMemo(() => {
     if (!previewItem || !hoverCell) return new Set();
     return new Set(
-      previewItem.occupiedCells.map(({ x, y }) => `${hoverCell.x + x},${hoverCell.y + y}`)
+      previewItem.occupiedCells.map(({ x, y }) => `${previewItem.gridX + x},${previewItem.gridY + y}`)
     );
   }, [previewItem, hoverCell]);
 
@@ -608,23 +810,36 @@ export default function RoomEditor() {
   }
 
   function placeCatalogItemAt(catalogItemId, x, y, rotation = 0) {
-    const candidate = { catalogItemId, gridX: x, gridY: y, rotation };
+    const requestedCandidate = { catalogItemId, gridX: x, gridY: y, rotation };
+    const position = getClampedFurniturePosition(requestedCandidate, x, y);
+    if (!position) {
+      setStatus('This furniture footprint is larger than the room.');
+      return false;
+    }
+    const candidate = { ...requestedCandidate, ...position };
     const occupiedCells = getOccupiedCells(candidate);
-    const isClear = occupiedCells.every(({ x: offsetX, y: offsetY }) => {
-      const cellX = x + offsetX;
-      const cellY = y + offsetY;
+    const fitsOnFloor = occupiedCells.every(({ x: offsetX, y: offsetY }) => {
+      const cellX = candidate.gridX + offsetX;
+      const cellY = candidate.gridY + offsetY;
       return cellX >= 0 && cellY >= 0
         && cellX < dimensions.width && cellY < dimensions.length
-        && !itemsByCell.has(`${cellX},${cellY}`);
+        && floorCellSet.has(`${cellX},${cellY}`);
     });
+    const overlapsOtherFurniture = furnitureOverlaps(candidate);
     const doorOverlap = furnitureTouchesDoor(candidate);
 
-    if (!isClear || doorOverlap) {
+    if (!fitsOnFloor || overlapsOtherFurniture || doorOverlap) {
       const reason = doorOverlap
         ? 'Furniture overlaps a door opening.'
-        : 'Furniture overlap: this placement conflicts with another item or leaves the room.';
-      recordOverlap(candidate, x, y, reason);
-      setStatus('Overlap recorded. ' + reason);
+        : overlapsOtherFurniture
+          ? 'Furniture overlap: this placement conflicts with another item.'
+          : 'Furniture must fit fully on the room floor.';
+      if (doorOverlap || overlapsOtherFurniture) {
+        recordOverlap(candidate, candidate.gridX, candidate.gridY, reason);
+        setStatus('Overlap recorded. ' + reason);
+      } else {
+        setStatus(reason);
+      }
       return false;
     }
 
@@ -632,15 +847,52 @@ export default function RoomEditor() {
       ...current,
       { placementId: createPlacementId(), ...candidate, customColor: null },
     ]);
-    setSelectedKey(`${x},${y}`);
+    setSelectedKey(`${Math.floor(candidate.gridX)},${Math.floor(candidate.gridY)}`);
     setSelectedArchitecturalElement(null);
     setArmedItemId(null);
     setStatus('');
     return true;
   }
 
+  function placeArmedItemAtNearestFloor(point) {
+    if (!armedItemId) return false;
+    const rotation = selectedItem?.rotation || 0;
+    let nearest = null;
+
+    for (let quarterY = 0; quarterY < dimensions.length * 4; quarterY += 1) {
+      const y = quarterY / 4;
+      for (let quarterX = 0; quarterX < dimensions.width * 4; quarterX += 1) {
+        const x = quarterX / 4;
+        const candidate = { catalogItemId: armedItemId, gridX: x, gridY: y, rotation };
+        const occupiedCells = getOccupiedCells(candidate);
+        const clear = occupiedCells.every(({ x: offsetX, y: offsetY }) => {
+          const cellX = x + offsetX;
+          const cellY = y + offsetY;
+          return cellX < dimensions.width && cellY < dimensions.length
+            && floorCellSet.has(`${cellX},${cellY}`);
+        });
+        if (!clear || furnitureOverlaps(candidate) || furnitureTouchesDoor(candidate)) continue;
+        const bounds = getFurnitureBounds(candidate);
+        const centerX = x + bounds.width / 2;
+        const centerY = y + bounds.length / 2;
+        const candidatePosition = {
+          x,
+          y,
+          distance: Math.hypot(point.x - centerX, point.y - centerY),
+        };
+        if (!nearest || candidatePosition.distance < nearest.distance) nearest = candidatePosition;
+      }
+    }
+
+    if (!nearest) {
+      setStatus('No clear floor area is available for this furniture.');
+      return false;
+    }
+    return placeCatalogItemAt(armedItemId, nearest.x, nearest.y, rotation);
+  }
+
   const handleCellClick = useCallback(
-    (x, y) => {
+    (x, y, event) => {
       if (isDesigner && ['wall', 'door', 'window'].includes(architecturalTool)) return;
       if (isDesigner && architecturalTool !== 'select') {
         handleArchitecturalCellClick(x, y);
@@ -650,6 +902,7 @@ export default function RoomEditor() {
       const existing = itemsByCell.get(key);
       setSelectedArchitecturalElement(null);
 
+      if (!floorCellSet.has(key)) return;
       if (existing) {
         setSelectedKey(key);
         setArmedItemId(null);
@@ -657,13 +910,19 @@ export default function RoomEditor() {
       }
 
       if (armedItemId) {
-        const currentRotation = selectedItem ? selectedItem.rotation : 0;
-        placeCatalogItemAt(armedItemId, x, y, currentRotation);
+        const svg = canvasWrapRef.current?.querySelector('.room-boundary-overlay');
+        const point = event ? getArchitecturalPoint(svg, event.clientX, event.clientY) : null;
+        if (point) {
+          placeArmedItemAtNearestFloor(point);
+        } else {
+          const currentRotation = selectedItem ? selectedItem.rotation : 0;
+          placeCatalogItemAt(armedItemId, x, y, currentRotation);
+        }
       } else {
         setSelectedKey(null);
       }
     },
-    [architecturalSegments, architecturalTool, isDesigner, pendingArchitectPoint, roomLabels, roomLabelText, armedItemId, dimensions, itemsByCell, selectedItem, placeCatalogItemAt]
+    [architecturalSegments, architecturalTool, floorCellSet, isDesigner, pendingArchitectPoint, roomLabels, roomLabelText, armedItemId, dimensions, itemsByCell, selectedItem, placeCatalogItemAt, placeArmedItemAtNearestFloor]
   );
 
   function setItemRotation(nextRotation) {
@@ -671,22 +930,29 @@ export default function RoomEditor() {
     nextRotation = ((Number(nextRotation) % 360) + 360) % 360;
     if (selectedItem.rotation === nextRotation) return;
 
-    const isClear = getOccupiedCells(selectedItem, nextRotation).every(({ x, y }) => {
+    const rotatedCandidate = { ...selectedItem, rotation: nextRotation };
+    const fitsOnFloor = getOccupiedCells(selectedItem, nextRotation).every(({ x, y }) => {
       const cellX = selectedItem.gridX + x;
       const cellY = selectedItem.gridY + y;
-      const occupant = itemsByCell.get(`${cellX},${cellY}`);
       return cellX >= 0 && cellY >= 0
         && cellX < dimensions.width && cellY < dimensions.length
-        && (!occupant || occupant === selectedItem);
+        && floorCellSet.has(`${cellX},${cellY}`);
     });
-    const doorOverlap = furnitureTouchesDoor({ ...selectedItem, rotation: nextRotation });
+    const doorOverlap = furnitureTouchesDoor(rotatedCandidate);
+    const overlapsOtherFurniture = furnitureOverlaps(rotatedCandidate, [selectedItem]);
 
-    if (!isClear || doorOverlap) {
+    if (!fitsOnFloor || overlapsOtherFurniture || doorOverlap) {
       const reason = doorOverlap
         ? 'Furniture overlaps a door opening.'
-        : 'That rotation would overlap another item or leave the room.';
-      recordOverlap({ ...selectedItem, rotation: nextRotation }, selectedItem.gridX, selectedItem.gridY, reason);
-      setStatus('Overlap recorded. ' + reason);
+        : overlapsOtherFurniture
+          ? 'That rotation would overlap another item.'
+          : 'Furniture must fit fully on the room floor.';
+      if (doorOverlap || overlapsOtherFurniture) {
+        recordOverlap({ ...selectedItem, rotation: nextRotation }, selectedItem.gridX, selectedItem.gridY, reason);
+        setStatus('Overlap recorded. ' + reason);
+      } else {
+        setStatus(reason);
+      }
       return;
     }
 
@@ -717,27 +983,33 @@ export default function RoomEditor() {
 
     const nextRotation = ((itemToRotate.rotation + stepDegrees) % 360 + 360) % 360;
     const candidate = { ...itemToRotate, rotation: nextRotation };
-    const isClear = getOccupiedCells(candidate).every(({ x, y }) => {
+    const fitsOnFloor = getOccupiedCells(candidate).every(({ x, y }) => {
       const cellX = itemToRotate.gridX + x;
       const cellY = itemToRotate.gridY + y;
-      const occupant = itemsByCell.get(`${cellX},${cellY}`);
       return cellX >= 0 && cellY >= 0
         && cellX < dimensions.width && cellY < dimensions.length
-        && (!occupant || occupant === itemToRotate);
+        && floorCellSet.has(`${cellX},${cellY}`);
     });
+    const overlapsOtherFurniture = furnitureOverlaps(candidate, [itemToRotate]);
     const doorOverlap = furnitureTouchesDoor(candidate);
 
-    if (!isClear || doorOverlap) {
+    if (!fitsOnFloor || overlapsOtherFurniture || doorOverlap) {
       const reason = doorOverlap
         ? 'Furniture overlaps a door opening.'
-        : 'That rotation would overlap another item or leave the room.';
-      recordOverlap(candidate, itemToRotate.gridX, itemToRotate.gridY, reason);
-      setStatus('Overlap recorded. ' + reason);
+        : overlapsOtherFurniture
+          ? 'That rotation would overlap another item.'
+          : 'Furniture must fit fully on the room floor.';
+      if (doorOverlap || overlapsOtherFurniture) {
+        recordOverlap(candidate, itemToRotate.gridX, itemToRotate.gridY, reason);
+        setStatus('Overlap recorded. ' + reason);
+      } else {
+        setStatus(reason);
+      }
       return;
     }
 
     setPlacedItems((current) => current.map((item) => item === itemToRotate ? { ...item, rotation: nextRotation } : item));
-    setSelectedKey(`${itemToRotate.gridX},${itemToRotate.gridY}`);
+    setSelectedKey(`${Math.floor(itemToRotate.gridX)},${Math.floor(itemToRotate.gridY)}`);
     setStatus('');
   }
 
@@ -748,31 +1020,203 @@ export default function RoomEditor() {
   }
 
   function moveItem(itemToMove, gridX, gridY) {
-    const candidate = { ...itemToMove, gridX, gridY };
-    const isClear = getOccupiedCells(candidate).every(({ x, y }) => {
-      const cellX = gridX + x;
-      const cellY = gridY + y;
-      const occupant = itemsByCell.get(`${cellX},${cellY}`);
+    const requestedCandidate = { ...itemToMove, gridX, gridY };
+    const position = getClampedFurniturePosition(requestedCandidate, gridX, gridY);
+    if (!position) {
+      setStatus('This furniture footprint is larger than the room.');
+      return;
+    }
+    const candidate = { ...requestedCandidate, ...position };
+    const fitsOnFloor = getOccupiedCells(candidate).every(({ x, y }) => {
+      const cellX = candidate.gridX + x;
+      const cellY = candidate.gridY + y;
       return cellX >= 0 && cellY >= 0
         && cellX < dimensions.width && cellY < dimensions.length
-        && (!occupant || occupant === itemToMove);
+        && floorCellSet.has(`${cellX},${cellY}`);
     });
+    const overlapsOtherFurniture = furnitureOverlaps(candidate, [itemToMove]);
     const doorOverlap = furnitureTouchesDoor(candidate);
 
-    if (!isClear || doorOverlap) {
+    if (!fitsOnFloor || overlapsOtherFurniture || doorOverlap) {
       const reason = doorOverlap
         ? 'Furniture overlaps a door opening.'
-        : 'That furniture footprint does not fit in the selected space.';
-      recordOverlap(candidate, gridX, gridY, reason);
-      setStatus('Overlap recorded. ' + reason);
+        : overlapsOtherFurniture
+          ? 'That furniture footprint overlaps another item.'
+          : 'Furniture must fit fully on the room floor.';
+      if (doorOverlap || overlapsOtherFurniture) {
+        recordOverlap(candidate, candidate.gridX, candidate.gridY, reason);
+        setStatus('Overlap recorded. ' + reason);
+      } else {
+        setStatus(reason);
+      }
       return;
     }
 
     setPlacedItems((prev) =>
-      prev.map((item) => (item === itemToMove ? { ...item, gridX, gridY } : item))
+      prev.map((item) => (item === itemToMove ? { ...item, ...position } : item))
     );
-    setSelectedKey(`${gridX},${gridY}`);
+    setSelectedKey(`${Math.floor(position.gridX)},${Math.floor(position.gridY)}`);
     setStatus('');
+  }
+
+  function resizeFurniture(
+    itemToResize,
+    width,
+    length,
+    gridX = itemToResize.gridX,
+    gridY = itemToResize.gridY
+  ) {
+    const candidate = { ...itemToResize, gridX, gridY, size: { width, length } };
+    const occupiedCells = getOccupiedCells(candidate);
+    const fitsInRoom = occupiedCells.every(({ x, y }) =>
+      candidate.gridX + x >= 0 && candidate.gridY + y >= 0
+      && candidate.gridX + x < dimensions.width && candidate.gridY + y < dimensions.length
+      && floorCellSet.has(`${candidate.gridX + x},${candidate.gridY + y}`)
+    );
+    const overlapsFurniture = furnitureOverlaps(candidate, [itemToResize]);
+    const doorOverlap = furnitureTouchesDoor(candidate);
+
+    if (!fitsInRoom || overlapsFurniture || doorOverlap) {
+      setStatus(doorOverlap
+        ? 'Furniture overlaps a door opening.'
+        : !fitsInRoom
+          ? 'Furniture must fit fully on the room floor.'
+          : 'Furniture overlaps another item.');
+      if (!fitsInRoom) return false;
+      if (doorOverlap || overlapsFurniture) {
+        recordOverlap(candidate, candidate.gridX, candidate.gridY, doorOverlap
+          ? 'Furniture overlaps a door opening.'
+          : 'Furniture overlaps another item.');
+      }
+      return false;
+    }
+
+    setPlacedItems((current) => current.map((item) =>
+      item.placementId === itemToResize.placementId
+        ? { ...item, gridX: candidate.gridX, gridY: candidate.gridY, size: candidate.size }
+        : item
+    ));
+    setSelectedKey(`${Math.floor(candidate.gridX)},${Math.floor(candidate.gridY)}`);
+    setStatus('');
+    return true;
+  }
+
+  function beginFurnitureResize(event, item, catalogItem, handle) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const width = item.size?.width || catalogItem.footprint.width;
+    const length = item.size?.length || catalogItem.footprint.length;
+    furnitureResizeRef.current = {
+      pointerId: event.pointerId,
+      placementId: item.placementId,
+      handle,
+      startX: event.clientX,
+      startY: event.clientY,
+      width,
+      length,
+      gridX: item.gridX,
+      gridY: item.gridY,
+      scale: Math.max(0.1, zoom * fitZoom),
+      rotation: platformRotation * Math.PI / 180,
+    };
+    setSelectedKey(`${Math.floor(item.gridX)},${Math.floor(item.gridY)}`);
+    setSelectedArchitecturalElement(null);
+    setResizeDraft({
+      placementId: item.placementId,
+      width,
+      length,
+      gridX: item.gridX,
+      gridY: item.gridY,
+    });
+  }
+
+  function getFurnitureResizeSize(resize, event) {
+    const screenX = event.clientX - resize.startX;
+    const screenY = event.clientY - resize.startY;
+    const cosine = Math.cos(resize.rotation);
+    const sine = Math.sin(resize.rotation);
+    const gridDeltaX = (screenX * cosine + screenY * sine) / (resize.scale * 43);
+    const gridDeltaY = (screenY * cosine - screenX * sine) / (resize.scale * 43);
+    const roundedDeltaX = Math.round(gridDeltaX * 4) / 4;
+    const roundedDeltaY = Math.round(gridDeltaY * 4) / 4;
+    const changesWestEdge = resize.handle.includes('west');
+    const changesNorthEdge = resize.handle.includes('north');
+    const widthDelta = changesWestEdge ? -roundedDeltaX
+      : resize.handle.includes('east') ? roundedDeltaX : null;
+    const lengthDelta = changesNorthEdge ? -roundedDeltaY
+      : resize.handle.includes('south') ? roundedDeltaY : null;
+    const widthScale = widthDelta === null ? null : 1 + widthDelta / resize.width;
+    const lengthScale = lengthDelta === null ? null : 1 + lengthDelta / resize.length;
+    const scale = widthScale === null ? lengthScale
+      : lengthScale === null ? widthScale
+        : Math.abs(widthScale - 1) >= Math.abs(lengthScale - 1) ? widthScale : lengthScale;
+    const clampedScale = Math.max(
+      0.25 / resize.width,
+      0.25 / resize.length,
+      Math.min(50 / resize.width, 50 / resize.length, scale ?? 1)
+    );
+    const width = Math.max(0.25, Math.round(resize.width * clampedScale * 4) / 4);
+    const length = Math.max(0.25, Math.round(resize.length * clampedScale * 4) / 4);
+    const changesHorizontalEdge = widthDelta !== null;
+    const changesVerticalEdge = lengthDelta !== null;
+    return {
+      width,
+      length,
+      gridX: resize.gridX + (changesWestEdge
+        ? resize.width - width
+        : changesHorizontalEdge ? 0 : (resize.width - width) / 2),
+      gridY: resize.gridY + (changesNorthEdge
+        ? resize.length - length
+        : changesVerticalEdge ? 0 : (resize.length - length) / 2),
+    };
+  }
+
+  function updateFurnitureResize(event) {
+    const resize = furnitureResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    setResizeDraft({
+      placementId: resize.placementId,
+      ...getFurnitureResizeSize(resize, event),
+    });
+  }
+
+  function finishFurnitureResize(event) {
+    const resize = furnitureResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    const item = placedItems.find((placedItem) => placedItem.placementId === resize.placementId);
+    if (item) {
+      const finalSize = getFurnitureResizeSize(resize, event);
+      resizeFurniture(item, finalSize.width, finalSize.length, finalSize.gridX, finalSize.gridY);
+    }
+    furnitureResizeRef.current = null;
+    setResizeDraft(null);
+  }
+
+  function cancelFurnitureResize(event) {
+    if (furnitureResizeRef.current?.pointerId !== event.pointerId) return;
+    furnitureResizeRef.current = null;
+    setResizeDraft(null);
+  }
+
+  function handleFurnitureResizeKeyDown(event, item, catalogItem) {
+    const width = item.size?.width || catalogItem.footprint.width;
+    const length = item.size?.length || catalogItem.footprint.length;
+    const changes = {
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+    };
+    const change = changes[event.key];
+    if (!change) return;
+    event.preventDefault();
+    event.stopPropagation();
+    resizeFurniture(
+      item,
+      Math.max(0.25, Math.min(50, width + change[0])),
+      Math.max(0.25, Math.min(50, length + change[1]))
+    );
   }
 
   function handleFurnitureDragStart(event, item) {
@@ -792,6 +1236,11 @@ export default function RoomEditor() {
     setArmedItemId(null);
     setDraggedItem({ catalogItemId: item._id, rotation });
     event.dataTransfer.effectAllowed = 'copy';
+    const glyph = event.currentTarget.querySelector('.glyph');
+    if (glyph) {
+      const glyphBounds = glyph.getBoundingClientRect();
+      event.dataTransfer.setDragImage(glyph, glyphBounds.width / 2, glyphBounds.height / 2);
+    }
     event.dataTransfer.setData('application/json', JSON.stringify({
       kind: 'catalog',
       catalogItemId: item._id,
@@ -865,13 +1314,54 @@ export default function RoomEditor() {
     return { x: deltaX, y: deltaY };
   }
 
+  function beginOutsideArchitectureDrag(event) {
+    if (!isDesigner || !['wall', 'door', 'window'].includes(architecturalTool)) return;
+    if (event.target.closest?.('.iso-grid, .workspace-controls, .workspace-item-controls')) return;
+    setStatus(`Placement error: ${architecturalTool} must be drawn on the room floor.`);
+  }
+
   function beginArchitecturalDrag(event) {
+    if (event.target.closest?.('.floor-extension-cell')) return;
     if (!isDesigner) return;
 
     if (architecturalTool === 'select') {
+      if (event.target.closest?.('.placed-item-resize-handle, [data-architecture-kind]')) return;
       const svg = event.currentTarget.querySelector('.architectural-overlay');
       const planPoint = getArchitecturalPoint(svg, event.clientX, event.clientY);
       if (!planPoint) return;
+
+      const furnitureHit = [...placedItems].reverse().find((item) => {
+        const bounds = getFurnitureBounds(item);
+        const hitMargin = 0.2;
+        return planPoint.x >= item.gridX - hitMargin
+          && planPoint.x <= item.gridX + bounds.width + hitMargin
+          && planPoint.y >= item.gridY - hitMargin
+          && planPoint.y <= item.gridY + bounds.length + hitMargin;
+      });
+      if (furnitureHit) {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        architecturalDragRef.current = {
+          mode: 'move-furniture',
+          pointerId: event.pointerId,
+          item: furnitureHit,
+          svg,
+          pointerStart: planPoint,
+          gridX: furnitureHit.gridX,
+          gridY: furnitureHit.gridY,
+          draft: { gridX: furnitureHit.gridX, gridY: furnitureHit.gridY },
+        };
+        suppressGridClickRef.current = true;
+        setFurnitureMoveDraft({
+          placementId: furnitureHit.placementId,
+          gridX: furnitureHit.gridX,
+          gridY: furnitureHit.gridY,
+        });
+        setSelectedKey(`${Math.floor(furnitureHit.gridX)},${Math.floor(furnitureHit.gridY)}`);
+        setSelectedArchitecturalElement(null);
+        setArmedItemId(null);
+        return;
+      }
 
       const segmentHits = architecturalSegments.map((segment) => ({
         kind: 'segment',
@@ -884,7 +1374,7 @@ export default function RoomEditor() {
         distance: Math.hypot(planPoint.x - label.x, planPoint.y - label.y),
       }));
       const closest = [...segmentHits, ...labelHits].sort((first, second) => first.distance - second.distance)[0];
-      if (!closest || closest.distance > 0.38) return;
+      if (!closest || closest.distance > 0.75) return;
       const { kind, element } = closest;
       const id = element.id;
 
@@ -902,11 +1392,15 @@ export default function RoomEditor() {
     }
 
     if (!['wall', 'door', 'window'].includes(architecturalTool)) return;
-    if (event.target.closest?.('.grid-resize-handle, .placed-item')) return;
+    if (event.target.closest?.('.grid-resize-handle, .floor-extension-cell, .placed-item')) return;
     const svg = event.currentTarget.querySelector('.architectural-overlay');
-    const pointerPoint = getArchitecturalPoint(svg, event.clientX, event.clientY);
+    let pointerPoint = getArchitecturalPoint(svg, event.clientX, event.clientY);
     if (!pointerPoint || pointerPoint.x < 0 || pointerPoint.y < 0
       || pointerPoint.x > dimensions.width || pointerPoint.y > dimensions.length) return;
+    if (!isPointOnRoomFloor(pointerPoint.x, pointerPoint.y)) {
+      setStatus(`Placement error: ${architecturalTool} must be drawn on the room floor.`);
+      return;
+    }
     if (architecturalSegments.length >= 300) {
       setStatus('A project can contain up to 300 walls, doors, and windows.');
       return;
@@ -915,7 +1409,15 @@ export default function RoomEditor() {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     const start = snapArchitecturalPoint(pointerPoint, dimensions);
-    architecturalDragRef.current = { mode: 'create', pointerId: event.pointerId, pointerStart: pointerPoint, start, end: start, type: architecturalTool, svg };
+    architecturalDragRef.current = {
+      mode: 'create',
+      pointerId: event.pointerId,
+      pointerStart: pointerPoint,
+      start,
+      end: start,
+      type: architecturalTool,
+      svg,
+    };
     suppressGridClickRef.current = true;
     setPendingArchitectPoint(start);
     setArchitecturalDragEnd(start);
@@ -923,12 +1425,98 @@ export default function RoomEditor() {
     setSelectedArchitecturalElement(null);
     setSelectedKey(null);
     setArmedItemId(null);
-    setStatus(`Drag to draw ${architecturalTool}.`);
+    setStatus('');
+  }
+
+  function beginArchitecturalElementDrag(event, kind, element) {
+    if (architecturalTool !== 'select' || armedItemId) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const svg = event.currentTarget.ownerSVGElement;
+    const pointerStart = getArchitecturalPoint(svg, event.clientX, event.clientY);
+    if (!svg || !pointerStart) return;
+
+    svg.setPointerCapture(event.pointerId);
+    architecturalDragRef.current = {
+      mode: 'move',
+      pointerId: event.pointerId,
+      kind,
+      id: element.id,
+      element,
+      svg,
+      pointerStart,
+      delta: { x: 0, y: 0 },
+    };
+    suppressGridClickRef.current = true;
+    setArchitecturalDragDelta({ x: 0, y: 0 });
+    setSelectedArchitecturalElement({ kind, id: element.id });
+    setSelectedKey(null);
+    setArmedItemId(null);
+  }
+
+  function beginArchitecturalEndpointDrag(event, segment, endpoint) {
+    if (architecturalTool !== 'select' || armedItemId) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const svg = event.currentTarget.ownerSVGElement;
+    const pointerStart = getArchitecturalPoint(svg, event.clientX, event.clientY);
+    if (!svg || !pointerStart) return;
+
+    svg.setPointerCapture(event.pointerId);
+    architecturalDragRef.current = {
+      mode: 'resize-segment',
+      pointerId: event.pointerId,
+      endpoint,
+      element: segment,
+      svg,
+      draft: segment,
+    };
+    suppressGridClickRef.current = true;
+    setArchitecturalSegmentDraft({ id: segment.id, segment, valid: true });
+    setSelectedArchitecturalElement({ kind: 'segment', id: segment.id });
+    setSelectedKey(null);
+    setArmedItemId(null);
   }
 
   function updateArchitecturalDrag(event) {
     const drag = architecturalDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.mode === 'move-furniture') {
+      const point = getArchitecturalPoint(drag.svg || event.currentTarget.querySelector('.architectural-overlay'), event.clientX, event.clientY);
+      if (!point) return;
+      const deltaX = Math.round((point.x - drag.pointerStart.x) * 4) / 4;
+      const deltaY = Math.round((point.y - drag.pointerStart.y) * 4) / 4;
+      const bounds = getFurnitureBounds(drag.item);
+      const maxX = dimensions.width - bounds.width;
+      const maxY = dimensions.length - bounds.length;
+      const gridX = Math.max(0, Math.min(maxX, drag.gridX + deltaX));
+      const gridY = Math.max(0, Math.min(maxY, drag.gridY + deltaY));
+      drag.draft = { gridX, gridY };
+      setFurnitureMoveDraft({ placementId: drag.item.placementId, gridX, gridY });
+      return;
+    }
+    if (drag.mode === 'resize-segment') {
+      const point = getArchitecturalPoint(drag.svg, event.clientX, event.clientY);
+      if (!point) return;
+      const original = drag.element;
+      const horizontal = original.startY === original.endY;
+      const axis = horizontal ? 'x' : 'y';
+      const limit = horizontal ? dimensions.width : dimensions.length;
+      const coordinate = Math.max(0, Math.min(limit, Math.round(point[axis] * 2) / 2));
+      const segment = {
+        ...original,
+        ...(drag.endpoint === 'start'
+          ? horizontal ? { startX: coordinate } : { startY: coordinate }
+          : horizontal ? { endX: coordinate } : { endY: coordinate }),
+      };
+      drag.draft = segment;
+      const valid = segment.startX !== segment.endX || segment.startY !== segment.endY;
+      const onFloor = valid && isSegmentOnRoomFloor(segment);
+      setArchitecturalSegmentDraft({ id: segment.id, segment, valid: onFloor });
+      return;
+    }
     if (drag.mode === 'move') {
       drag.delta = getArchitecturalMoveDelta(drag, event);
       setArchitecturalDragDelta(drag.delta);
@@ -946,26 +1534,68 @@ export default function RoomEditor() {
   function finishArchitecturalDrag(event) {
     const drag = architecturalDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.mode === 'move-furniture') {
+      updateArchitecturalDrag(event);
+      moveItem(drag.item, drag.draft.gridX, drag.draft.gridY);
+      architecturalDragRef.current = null;
+      setFurnitureMoveDraft(null);
+      window.setTimeout(() => { suppressGridClickRef.current = false; }, 0);
+      return;
+    }
+    if (drag.mode === 'resize-segment') {
+      updateArchitecturalDrag(event);
+      const segment = drag.draft;
+      const valid = segment.startX !== segment.endX || segment.startY !== segment.endY;
+      if (!valid) {
+        setStatus('A wall must be at least one half grid cell long.');
+      } else if (!isSegmentOnRoomFloor(segment)) {
+        setStatus('Placement error: the wall must stay on the room floor.');
+      } else {
+        setArchitecturalSegments((current) => current.map((item) => (
+          item.id === segment.id ? segment : item
+        )));
+        setStatus('Wall length updated.');
+      }
+      architecturalDragRef.current = null;
+      setArchitecturalSegmentDraft(null);
+      window.setTimeout(() => { suppressGridClickRef.current = false; }, 0);
+      return;
+    }
     if (drag.mode === 'move') {
       updateArchitecturalDrag(event);
       const { x, y } = drag.delta;
       if (x || y) {
         if (drag.kind === 'segment') {
-          setArchitecturalSegments((current) => current.map((segment) => segment.id === drag.id ? {
-            ...segment,
+          const movedSegment = {
+            ...drag.element,
             startX: drag.element.startX + x,
             startY: drag.element.startY + y,
             endX: drag.element.endX + x,
             endY: drag.element.endY + y,
-          } : segment));
+          };
+          if (!isSegmentOnRoomFloor(movedSegment)) {
+            setStatus('Placement error: plan elements must stay on the room floor.');
+          } else {
+            setArchitecturalSegments((current) => current.map((currentSegment) => (
+              currentSegment.id === drag.id ? movedSegment : currentSegment
+            )));
+            setStatus('Plan element moved.');
+          }
         } else {
-          setRoomLabels((current) => current.map((label) => label.id === drag.id ? {
-            ...label,
+          const movedLabel = {
+            ...drag.element,
             x: drag.element.x + x,
             y: drag.element.y + y,
-          } : label));
+          };
+          if (!isPointOnRoomFloor(movedLabel.x, movedLabel.y)) {
+            setStatus('Placement error: room labels must stay on the room floor.');
+          } else {
+            setRoomLabels((current) => current.map((currentLabel) => (
+              currentLabel.id === drag.id ? movedLabel : currentLabel
+            )));
+            setStatus('Plan element moved.');
+          }
         }
-        setStatus('Plan element moved.');
       } else {
         setStatus('Plan element selected.');
       }
@@ -977,8 +1607,9 @@ export default function RoomEditor() {
 
     updateArchitecturalDrag(event);
 
+    let segment = null;
     if (drag.start.x !== drag.end.x || drag.start.y !== drag.end.y) {
-      const segment = {
+      segment = {
         id: createPlacementId(),
         type: drag.type,
         startX: drag.start.x,
@@ -986,9 +1617,16 @@ export default function RoomEditor() {
         endX: drag.end.x,
         endY: drag.end.y,
       };
-      setArchitecturalSegments((current) => [...current, segment]);
-      setSelectedArchitecturalElement({ kind: 'segment', id: segment.id });
-      setStatus(`${drag.type[0].toUpperCase()}${drag.type.slice(1)} added.`);
+    }
+
+    if (segment) {
+      if (!isSegmentOnRoomFloor(segment)) {
+        setStatus(`Placement error: ${drag.type} must stay on the room floor.`);
+      } else {
+        setArchitecturalSegments((current) => [...current, segment]);
+        setSelectedArchitecturalElement({ kind: 'segment', id: segment.id });
+        setStatus(`${drag.type[0].toUpperCase()}${drag.type.slice(1)} added.`);
+      }
     } else {
       setStatus('Drag across at least one grid cell to draw.');
     }
@@ -1004,6 +1642,8 @@ export default function RoomEditor() {
   function cancelArchitecturalDrag(event) {
     if (architecturalDragRef.current?.pointerId !== event.pointerId) return;
     architecturalDragRef.current = null;
+    setFurnitureMoveDraft(null);
+    setArchitecturalSegmentDraft(null);
     setPendingArchitectPoint(null);
     setArchitecturalDragEnd(null);
     setArchitecturalDragDelta({ x: 0, y: 0 });
@@ -1047,6 +1687,13 @@ export default function RoomEditor() {
     });
     const start = rotatePoint(segment.startX, segment.startY);
     const end = rotatePoint(segment.endX, segment.endY);
+    const rotatedSegment = {
+      ...segment,
+      startX: start.x,
+      startY: start.y,
+      endX: end.x,
+      endY: end.y,
+    };
     const minX = Math.min(start.x, end.x);
     const maxX = Math.max(start.x, end.x);
     const minY = Math.min(start.y, end.y);
@@ -1059,13 +1706,18 @@ export default function RoomEditor() {
       return;
     }
 
-    setArchitecturalSegments((current) => current.map((item) => item.id === id ? {
-      ...item,
-      startX: start.x + shiftX,
-      startY: start.y + shiftY,
-      endX: end.x + shiftX,
-      endY: end.y + shiftY,
-    } : item));
+    rotatedSegment.startX += shiftX;
+    rotatedSegment.startY += shiftY;
+    rotatedSegment.endX += shiftX;
+    rotatedSegment.endY += shiftY;
+    if (!isSegmentOnRoomFloor(rotatedSegment)) {
+      setStatus('Placement error: the rotated element must stay on the room floor.');
+      return;
+    }
+
+    setArchitecturalSegments((current) => current.map((item) => (
+      item.id === id ? rotatedSegment : item
+    )));
     setStatus(`${segment.type[0].toUpperCase()}${segment.type.slice(1)} rotated 90°.`);
   }
 
@@ -1073,7 +1725,7 @@ export default function RoomEditor() {
     setPlacedItems((prev) =>
       prev.filter((item) => !(item.gridX === itemToRemove.gridX && item.gridY === itemToRemove.gridY))
     );
-    if (selectedKey === `${itemToRemove.gridX},${itemToRemove.gridY}`) {
+    if (selectedItem === itemToRemove) {
       setSelectedKey(null);
     }
   }
@@ -1094,7 +1746,23 @@ export default function RoomEditor() {
     setStatus('');
     const validPlacedItems = placedItems
       .filter((item) => catalogById.has(item.catalogItemId?.toString()))
-      .map((item) => ({ ...item, placementId: item.placementId || createPlacementId() }));
+      .map((item) => ({
+        ...item,
+        placementId: item.placementId || createPlacementId(),
+        gridX: normalizeQuarterGrid(item.gridX),
+        gridY: normalizeQuarterGrid(item.gridY),
+        ...(item.size ? {
+          size: {
+            width: normalizeQuarterGrid(item.size.width),
+            length: normalizeQuarterGrid(item.size.length),
+          },
+        } : {}),
+      }));
+    const normalizedOverlapRecords = overlapRecords.map((record) => ({
+      ...record,
+      gridX: normalizeQuarterGrid(record.gridX),
+      gridY: normalizeQuarterGrid(record.gridY),
+    }));
     const payload = {
       roomName,
       clientName,
@@ -1106,11 +1774,12 @@ export default function RoomEditor() {
       designNotes,
       timerSeconds,
       dimensions,
+      floorCells,
       floorColor,
       gridColor,
       ...(isDesigner ? { wallThicknessMm, architecturalSegments, roomLabels } : {}),
       placedItems: validPlacedItems,
-      overlapRecords,
+      overlapRecords: normalizedOverlapRecords,
     };
     try {
       if (isNew) {
@@ -1121,7 +1790,7 @@ export default function RoomEditor() {
         setStatus('Saved.');
         baselineRef.current = getEditorSnapshot(savedPlacedItems);
         setIsDirty(false);
-        if (afterSave) afterSave(data);
+        if (afterSave) await afterSave(data);
         else navigate(`/room/${data._id}`, { replace: true });
       } else {
         const { data } = await api.put(`/rooms/${id}`, payload);
@@ -1131,7 +1800,7 @@ export default function RoomEditor() {
         setStatus('Saved.');
         baselineRef.current = getEditorSnapshot(savedPlacedItems);
         setIsDirty(false);
-        if (afterSave) afterSave();
+        if (afterSave) await afterSave(data);
       }
       return true;
     } catch (err) {
@@ -1147,18 +1816,25 @@ export default function RoomEditor() {
 
   async function handleSaveVersion(event) {
     event.preventDefault();
-    const name = versionName.trim();
-    if (!name) {
-      setVersionError('Enter a name for this version.');
+    setVersionError('');
+    setVersionMessage('');
+    const name = versionName.trim() || `Version ${versions.length + 1}`;
+    let targetRoomId = id;
+    if (isNew) {
+      const saved = await handleSave((room) => {
+        targetRoomId = room._id;
+        navigate(`/room/${targetRoomId}`, { replace: true });
+      });
+      if (!saved || !targetRoomId) return;
+    } else if (isDirty && !(await handleSave())) {
       return;
     }
-    if (isDirty && !(await handleSave())) return;
 
     setVersionSaving(true);
     setVersionError('');
     setVersionMessage('');
     try {
-      const { data } = await api.post(`/rooms/${id}/versions`, { name });
+      const { data } = await api.post(`/rooms/${targetRoomId}/versions`, { name });
       setVersions((current) => [data, ...current].slice(0, 20));
       setVersionName('');
       setVersionMessage('Version saved.');
@@ -1245,6 +1921,65 @@ export default function RoomEditor() {
     };
   }
 
+  function updateArchitectureWithRoomResize(oldDimensions, widthDelta, lengthDelta, shiftX, shiftY, edgeX, edgeY) {
+    if (!isDesigner || (!shiftX && !shiftY && !widthDelta && !lengthDelta)) return;
+
+    setArchitecturalSegments((current) => current.map((segment) => {
+      let updated = {
+        ...segment,
+        startX: segment.startX + shiftX,
+        endX: segment.endX + shiftX,
+        startY: segment.startY + shiftY,
+        endY: segment.endY + shiftY,
+      };
+      const epsilon = 1e-9;
+      const horizontal = Math.abs(updated.startY - updated.endY) < epsilon;
+      const vertical = Math.abs(updated.startX - updated.endX) < epsilon;
+      if (widthDelta && edgeX !== 0) {
+        const right = edgeX > 0;
+        const oldEdge = (right ? oldDimensions.width : 0) + shiftX;
+        const newEdge = right ? oldDimensions.width + widthDelta : 0;
+        if (updated.type === 'wall') {
+          if (vertical && Math.abs(updated.startX - oldEdge) < epsilon) {
+            updated.startX = newEdge;
+            updated.endX = newEdge;
+          } else if (horizontal) {
+            if (Math.abs(updated.startX - oldEdge) < epsilon) updated.startX = newEdge;
+            if (Math.abs(updated.endX - oldEdge) < epsilon) updated.endX = newEdge;
+          }
+        } else if (vertical && Math.abs(updated.startX - oldEdge) < epsilon) {
+          updated.startX = newEdge;
+          updated.endX = newEdge;
+        }
+      }
+      if (lengthDelta && edgeY !== 0) {
+        const bottom = edgeY > 0;
+        const oldEdge = (bottom ? oldDimensions.length : 0) + shiftY;
+        const newEdge = bottom ? oldDimensions.length + lengthDelta : 0;
+        if (updated.type === 'wall') {
+          if (horizontal && Math.abs(updated.startY - oldEdge) < epsilon) {
+            updated.startY = newEdge;
+            updated.endY = newEdge;
+          } else if (vertical) {
+            if (Math.abs(updated.startY - oldEdge) < epsilon) updated.startY = newEdge;
+            if (Math.abs(updated.endY - oldEdge) < epsilon) updated.endY = newEdge;
+          }
+        } else if (horizontal && Math.abs(updated.startY - oldEdge) < epsilon) {
+          updated.startY = newEdge;
+          updated.endY = newEdge;
+        }
+      }
+      return updated;
+    }));
+    if (shiftX || shiftY) {
+      setRoomLabels((current) => current.map((label) => ({
+        ...label,
+        x: label.x + shiftX,
+        y: label.y + shiftY,
+      })));
+    }
+  }
+
   function resizeGridFromPointer(event) {
     const resize = gridResizeRef.current;
     if (!resize || resize.pointerId !== event.pointerId) return;
@@ -1285,6 +2020,15 @@ export default function RoomEditor() {
         setSelectedKey(`${selectedX + shiftX},${selectedY + shiftY}`);
       }
     }
+    updateArchitectureWithRoomResize(
+      resize.dimensions,
+      widthDelta,
+      lengthDelta,
+      shiftX,
+      shiftY,
+      resize.edgeX,
+      resize.edgeY
+    );
     setHoverCell(null);
   }
 
@@ -1332,12 +2076,39 @@ export default function RoomEditor() {
         setSelectedKey(`${selectedX + shiftX},${selectedY + shiftY}`);
       }
     }
+    updateArchitectureWithRoomResize(
+      dimensions,
+      widthDelta,
+      lengthDelta,
+      shiftX,
+      shiftY,
+      edgeX,
+      edgeY
+    );
     setHoverCell(null);
   }
 
   function updateZoom(nextZoom) {
     setZoom(Math.max(0.6, Math.min(1.8, Number(nextZoom.toFixed(2)))));
   }
+
+  useEffect(() => {
+    const canvas = canvasWrapRef.current;
+    if (!canvas) return undefined;
+
+    function handleWorkspacePinch(event) {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setZoom((currentZoom) => Math.max(
+        0.6,
+        Math.min(1.8, Number((currentZoom + (event.deltaY < 0 ? 0.1 : -0.1)).toFixed(2)))
+      ));
+    }
+
+    canvas.addEventListener('wheel', handleWorkspacePinch, { passive: false });
+    return () => canvas.removeEventListener('wheel', handleWorkspacePinch);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasWrapRef.current;
@@ -1379,9 +2150,28 @@ export default function RoomEditor() {
   const cells = [];
   for (let y = 0; y < dimensions.length; y += 1) {
     for (let x = 0; x < dimensions.width; x += 1) {
-      cells.push({ x, y });
+      const key = `${x},${y}`;
+      cells.push({
+        x,
+        y,
+        isFloor: floorCellSet.has(key),
+        canExtend: exposedFloorCells.some((cell) => cell.x === x && cell.y === y),
+      });
     }
   }
+  const outsideExtensions = exposedFloorCells.filter(({ x, y }) => (
+    x < 0 || y < 0 || x >= dimensions.width || y >= dimensions.length
+  ));
+  const roomBoundaryEdges = getFloorBoundaryEdges(floorCells);
+  const renderArchitecturalSegments = [...architecturalSegments].sort((first, second) => (
+    (first.type === 'wall' ? 0 : 1) - (second.type === 'wall' ? 0 : 1)
+  ));
+  const versionFloorCells = versionPreview
+    ? versionPreview.snapshot.floorCells?.length
+      ? versionPreview.snapshot.floorCells
+      : createFloorCells(versionPreview.snapshot.dimensions)
+    : [];
+  const versionFloorCellSet = new Set(versionFloorCells.map(({ x, y }) => `${x},${y}`));
   const millimetresPerUnit = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8 }[measurements.unit] || 304.8;
   const measuredCellSizes = [
     Number(measurements.width) > 0 ? (Number(measurements.width) * millimetresPerUnit) / dimensions.width : null,
@@ -1415,7 +2205,7 @@ export default function RoomEditor() {
           />
         </div>
         <div className="topbar-actions">
-          {(hoverError || status) && <span className={`status-text ${hoverError ? 'error' : ''}`}>{hoverError || status}</span>}
+          {(hoverError || status) && <span className={`status-text ${hoverError || status.startsWith('Placement error:') ? 'error' : ''}`}>{hoverError || status}</span>}
           <span className="mono" aria-label="Workspace timer">{formatTimer(timerSeconds)}</span>
           <span className="muted small">{timerRunning ? 'Active' : 'Paused after 1 minute idle'}</span>
           <button className="btn-primary" onClick={() => handleSave()} disabled={saving}>
@@ -1443,7 +2233,11 @@ export default function RoomEditor() {
                     key={tool.value}
                     aria-pressed={architecturalTool === tool.value}
                     onClick={() => {
-                      setArchitecturalTool(tool.value);
+                      setArchitecturalTool(
+                        tool.value !== 'select' && architecturalTool === tool.value
+                          ? 'select'
+                          : tool.value
+                      );
                       setPendingArchitectPoint(null);
                       setSelectedArchitecturalElement(null);
                       setArmedItemId(null);
@@ -1462,7 +2256,7 @@ export default function RoomEditor() {
                 </select>
               </label>
               {['wall', 'door', 'window'].includes(architecturalTool) && !pendingArchitectPoint && (
-                <p className="architect-tool-hint">Drag across the plan to draw one element.</p>
+                <p className="architect-tool-hint">Drag once to draw; the tool returns to Select when you release.</p>
               )}
               {architecturalTool === 'select' && (architecturalSegments.length > 0 || roomLabels.length > 0) && (
                 <p className="architect-tool-hint">Drag a wall, opening, or label to reposition it.</p>
@@ -1548,12 +2342,41 @@ export default function RoomEditor() {
               </div>
             )}
           </section>
-          {armedItemId && <p className="hint">Click a cell or drag this item onto the floor. Places once.</p>}
+          {armedItemId && <p className="hint">Click a floor cell or drag this item onto the floor. Places once.</p>}
         </aside>
 
-        <main className="canvas-wrap" ref={canvasWrapRef}>
+        <main
+          className="canvas-wrap"
+          ref={canvasWrapRef}
+          onPointerDown={beginOutsideArchitectureDrag}
+          onClick={(event) => {
+            if (event.target.closest?.('.workspace-controls, .workspace-item-controls')) return;
+            if (showFloorExtensions && !event.target.closest?.('.floor-extension-cell')) {
+              const svg = event.currentTarget.querySelector('.room-boundary-overlay');
+              const point = svg && getArchitecturalPoint(svg, event.clientX, event.clientY);
+              const cellKey = point
+                ? `${Math.floor(point.x)},${Math.floor(point.y)}`
+                : null;
+              if (!cellKey || !floorCellSet.has(cellKey)) {
+                setShowFloorExtensions(false);
+              }
+            }
+            if (!event.target.closest?.('.iso-grid')) {
+              setSelectedArchitecturalElement(null);
+              setSelectedKey(null);
+            }
+            if (!armedItemId || event.target.closest?.('.iso-grid')) return;
+            const svg = event.currentTarget.querySelector('.room-boundary-overlay');
+            const point = getArchitecturalPoint(svg, event.clientX, event.clientY);
+            if (!point) {
+              setStatus('Could not determine the nearest room floor position.');
+              return;
+            }
+            placeArmedItemAtNearestFloor(point);
+          }}
+        >
           <div className="print-room-title" aria-hidden="true">
-            <p className="eyebrow">Studio Grid / Room design</p>
+            <p className="eyebrow">SwiftSpace / Room design</p>
             <h1>{roomName}</h1>
           </div>
           <div className="workspace-controls" aria-label="Workspace zoom controls">
@@ -1572,11 +2395,68 @@ export default function RoomEditor() {
               ↻
             </button>
             <span aria-live="polite">{platformRotation}°</span>
+            <span className="workspace-control-separator" aria-hidden="true" />
+            <button
+              className={`workspace-extension-toggle${showFloorExtensions ? ' active' : ''}`}
+              type="button"
+              aria-pressed={showFloorExtensions}
+              onClick={() => setShowFloorExtensions((visible) => !visible)}
+              title={showFloorExtensions ? 'Hide floor extension points' : 'Show floor extension points'}
+            >
+              Add extension
+            </button>
           </div>
+          {selectedItem && (
+            <div className="workspace-item-controls" aria-label="Selected furniture actions">
+              <button
+                className="workspace-item-action"
+                type="button"
+                onClick={() => rotatePlacedItem(selectedItem)}
+                title="Rotate selected furniture 90 degrees clockwise"
+                aria-label="Rotate selected furniture 90 degrees clockwise"
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M13 5V1m0 4H9M13 5a6 6 0 1 0 1 5" />
+                </svg>
+                <span>Rotate</span>
+              </button>
+              <button
+                className="workspace-item-action danger"
+                type="button"
+                onClick={() => removeItem(selectedItem)}
+                title="Remove selected furniture"
+                aria-label="Remove selected furniture"
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M2.5 4h11M6 4V2.5h4V4m2.5 0-.6 10h-7.8L3.5 4m2.5 2.5v5m3-5v5" />
+                </svg>
+                <span>Remove</span>
+              </button>
+            </div>
+          )}
+          {selectedArchitecturalElement && (
+            <div className="workspace-item-controls" aria-label="Selected architecture actions">
+              <button
+                className="workspace-item-action danger"
+                type="button"
+                onClick={() => removeArchitecturalElement(
+                  selectedArchitecturalElement.kind,
+                  selectedArchitecturalElement.id
+                )}
+                title="Remove selected plan element"
+                aria-label="Remove selected plan element"
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M2.5 4h11M6 4V2.5h4V4m2.5 0-.6 10h-7.8L3.5 4m2.5 2.5v5m3-5v5" />
+                </svg>
+                <span>Remove</span>
+              </button>
+            </div>
+          )}
           {hoverError && <div className="placement-warning">{hoverError}</div>}
           <div className="workspace-zoom" style={{ transform: `scale(${zoom * fitZoom}) rotate(${platformRotation}deg)` }}>
             <div
-              className={`iso-grid${isDesigner ? ' architectural-grid' : ''}`}
+              className={`iso-grid${isDesigner ? ' architectural-grid' : ''}${showFloorExtensions ? ' floor-extensions-visible' : ' floor-extensions-hidden'}`}
               onPointerDown={beginArchitecturalDrag}
               onPointerMove={updateArchitecturalDrag}
               onPointerUp={finishArchitecturalDrag}
@@ -1591,9 +2471,14 @@ export default function RoomEditor() {
                 '--cols': dimensions.width,
                 '--rows': dimensions.length,
                 '--grid-color': gridColor,
+                '--workspace-color': workspaceColor,
+                '--grid-background-color': showFloorExtensions ? gridColor : workspaceColor,
+                '--platform-rotation': `${platformRotation}deg`,
+                '--grid-cell-gap': showFloorExtensions ? '1px' : '0px',
+                '--grid-track-size': showFloorExtensions ? '42px' : '43px',
               }}
             >
-              {cells.map(({ x, y }) => {
+              {cells.map(({ x, y, isFloor, canExtend }) => {
                 const key = `${x},${y}`;
                 const placed = itemsByCell.get(key);
                 const isSelected = selectedKey === key;
@@ -1601,14 +2486,45 @@ export default function RoomEditor() {
                 const previewClass = isPreviewCell
                   ? previewItem?.canPlace ? 'preview-valid' : 'preview-invalid'
                   : '';
+                if (!isFloor && (!canExtend || !showFloorExtensions)) {
+                  return (
+                    <div
+                      key={key}
+                      className="grid-cell void-cell"
+                      data-grid-x={x}
+                      data-grid-y={y}
+                      onClick={() => {
+                        if (armedItemId) placeArmedItemAtNearestFloor({ x: x + 0.5, y: y + 0.5 });
+                      }}
+                      aria-hidden="true"
+                    />
+                  );
+                }
+                if (!isFloor) {
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className="grid-cell floor-extension-cell"
+                      style={{ gridColumn: x + 1, gridRow: y + 1 }}
+                      onPointerDown={(event) => beginFloorExtensionDrag(event, x, y)}
+                      onPointerEnter={() => continueFloorExtensionDrag(x, y)}
+                      onClick={(event) => activateFloorExtensionByKeyboard(event, x, y)}
+                      aria-label={`Extend room at ${x}, ${y}`}
+                      title="Add one floor cell"
+                    >
+                      <span aria-hidden="true">+</span>
+                    </button>
+                  );
+                }
                 return (
                   <button
                     key={key}
-                    className={`grid-cell ${placed ? 'occupied' : ''} ${isSelected ? 'selected' : ''} ${previewClass}`.trim()}
+                    className={`grid-cell ${placed ? 'occupied' : ''} ${isSelected && !placed ? 'selected' : ''} ${previewClass}`.trim()}
                     style={{ gridColumn: x + 1, gridRow: y + 1 }}
                     data-grid-x={x}
                     data-grid-y={y}
-                    onClick={() => handleCellClick(x, y)}
+                    onClick={(event) => handleCellClick(x, y, event)}
                     onMouseEnter={() => setHoverCell({ x, y })}
                     onMouseLeave={() => setHoverCell(null)}
                     onDragEnter={(event) => {
@@ -1624,22 +2540,48 @@ export default function RoomEditor() {
                   />
                 );
               })}
+              {showFloorExtensions && outsideExtensions.map(({ x, y }) => (
+                <button
+                  key={`extend-${x},${y}`}
+                  type="button"
+                  className="floor-extension-cell outside-extension-cell"
+                  style={{ left: `${x * 43 + 1}px`, top: `${y * 43 + 1}px` }}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    beginFloorExtensionDrag(event, x, y);
+                  }}
+                  onPointerEnter={() => continueFloorExtensionDrag(x, y)}
+                  onClick={(event) => activateFloorExtensionByKeyboard(event, x, y)}
+                  aria-label={`Extend room at ${x}, ${y}`}
+                  title="Add one floor cell"
+                >
+                  <span aria-hidden="true">+</span>
+                </button>
+              ))}
+              <svg
+                className="room-boundary-overlay"
+                viewBox={`0 0 ${dimensions.width * 43 + 2} ${dimensions.length * 43 + 2}`}
+                aria-hidden="true"
+              />
               {isDesigner && (
                 <svg
-                  className="architectural-overlay"
+                  className={`architectural-overlay${armedItemId ? ' placing-furniture' : ''}`}
                   viewBox={`0 0 ${dimensions.width * 43 + 2} ${dimensions.length * 43 + 2}`}
                   aria-label="Architectural walls, doors, windows, and room labels"
                 >
-                  {architecturalSegments.map((segment) => {
+                  {renderArchitecturalSegments.map((segment) => {
+                    const displayedSegment = architecturalSegmentDraft?.id === segment.id
+                      ? architecturalSegmentDraft.segment
+                      : segment;
                     const isSelected = selectedArchitecturalElement?.kind === 'segment'
                       && selectedArchitecturalElement.id === segment.id;
                     const isBeingDragged = architecturalDragRef.current?.mode === 'move'
                       && architecturalDragRef.current.kind === 'segment'
                       && architecturalDragRef.current.id === segment.id;
-                    const startX = segment.startX * 43 + 1;
-                    const startY = segment.startY * 43 + 1;
-                    const endX = segment.endX * 43 + 1;
-                    const endY = segment.endY * 43 + 1;
+                    const startX = displayedSegment.startX * 43 + 1;
+                    const startY = displayedSegment.startY * 43 + 1;
+                    const endX = displayedSegment.endX * 43 + 1;
+                    const endY = displayedSegment.endY * 43 + 1;
                     const segmentLength = Math.hypot(endX - startX, endY - startY);
                     const isHorizontal = startY === endY;
                     const swingX = isHorizontal ? startX : startX + segmentLength;
@@ -1653,16 +2595,26 @@ export default function RoomEditor() {
                         data-architecture-kind="segment"
                         data-architecture-id={segment.id}
                         transform={isBeingDragged ? `translate(${architecturalDragDelta.x * 43} ${architecturalDragDelta.y * 43})` : undefined}
-                        pointerEvents={architecturalTool === 'select' ? 'visiblePainted' : 'none'}
+                        pointerEvents={architecturalTool === 'select' && !armedItemId ? 'all' : 'none'}
                         style={{ cursor: architecturalTool === 'select' ? 'pointer' : 'default' }}
+                        onPointerDown={(event) => beginArchitecturalElementDrag(event, 'segment', segment)}
                         onClick={(event) => {
-                          if (architecturalTool !== 'select') return;
+                          if (architecturalTool !== 'select' || armedItemId) return;
                           event.stopPropagation();
                           setSelectedArchitecturalElement({ kind: 'segment', id: segment.id });
                           setSelectedKey(null);
                           setArmedItemId(null);
                         }}
                       >
+                        <line
+                          x1={startX}
+                          y1={startY}
+                          x2={endX}
+                          y2={endY}
+                          stroke="rgba(0, 0, 0, 0.001)"
+                          strokeWidth={Math.max(16, wallStrokeWidth + 8)}
+                          pointerEvents={armedItemId ? 'none' : 'stroke'}
+                        />
                         {segment.type === 'wall' && (
                           <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={isSelected ? 'var(--accent)' : '#202722'} strokeWidth={wallStrokeWidth} strokeLinecap="square" />
                         )}
@@ -1693,6 +2645,40 @@ export default function RoomEditor() {
                             />
                           </>
                         )}
+                        {isSelected && segment.type === 'wall' && (
+                          <>
+                            <circle
+                              cx={startX}
+                              cy={startY}
+                              r="7"
+                              fill={architecturalSegmentDraft?.id === segment.id
+                                && !architecturalSegmentDraft.valid ? '#c94b43' : '#fff'}
+                              stroke="var(--accent)"
+                              strokeWidth="2"
+                              style={{ cursor: 'grab', touchAction: 'none' }}
+                              role="button"
+                              tabIndex={0}
+                              aria-label="Drag to extend or shorten the start of the wall"
+                              onPointerDown={(event) => beginArchitecturalEndpointDrag(event, segment, 'start')}
+                              onClick={(event) => event.stopPropagation()}
+                            ><title>Drag to extend or shorten wall</title></circle>
+                            <circle
+                              cx={endX}
+                              cy={endY}
+                              r="7"
+                              fill={architecturalSegmentDraft?.id === segment.id
+                                && !architecturalSegmentDraft.valid ? '#c94b43' : '#fff'}
+                              stroke="var(--accent)"
+                              strokeWidth="2"
+                              style={{ cursor: 'grab', touchAction: 'none' }}
+                              role="button"
+                              tabIndex={0}
+                              aria-label="Drag to extend or shorten the end of the wall"
+                              onPointerDown={(event) => beginArchitecturalEndpointDrag(event, segment, 'end')}
+                              onClick={(event) => event.stopPropagation()}
+                            ><title>Drag to extend or shorten wall</title></circle>
+                          </>
+                        )}
                       </g>
                     );
                   })}
@@ -1711,10 +2697,11 @@ export default function RoomEditor() {
                         data-architecture-kind="label"
                         data-architecture-id={label.id}
                         transform={`translate(${x + (isBeingDragged ? architecturalDragDelta.x * 43 : 0)} ${y + (isBeingDragged ? architecturalDragDelta.y * 43 : 0)}) rotate(${label.rotation || 0})`}
-                        pointerEvents={architecturalTool === 'select' ? 'visiblePainted' : 'none'}
+                        pointerEvents={architecturalTool === 'select' && !armedItemId ? 'all' : 'none'}
                         style={{ cursor: architecturalTool === 'select' ? 'pointer' : 'default' }}
+                        onPointerDown={(event) => beginArchitecturalElementDrag(event, 'label', label)}
                         onClick={(event) => {
-                          if (architecturalTool !== 'select') return;
+                          if (architecturalTool !== 'select' || armedItemId) return;
                           event.stopPropagation();
                           setSelectedArchitecturalElement({ kind: 'label', id: label.id });
                           setSelectedKey(null);
@@ -1751,8 +2738,8 @@ export default function RoomEditor() {
                     '--item-color': previewItem.catalogItem.defaultColor,
                     left: `${(previewItem.gridX + previewItem.bounds.minX) * 43 + 1}px`,
                     top: `${(previewItem.gridY + previewItem.bounds.minY) * 43 + 1}px`,
-                    width: `${previewItem.bounds.width * 42 + (previewItem.bounds.width - 1)}px`,
-                    height: `${previewItem.bounds.length * 42 + (previewItem.bounds.length - 1)}px`,
+                    width: `${previewItem.bounds.width * 43 - 1}px`,
+                    height: `${previewItem.bounds.length * 43 - 1}px`,
                     pointerEvents: 'none',
                     opacity: previewItem.canPlace ? 0.55 : 0.3,
                     border: 'none',
@@ -1766,8 +2753,14 @@ export default function RoomEditor() {
                     <ItemGlyph
                       iconKey={previewItem.catalogItem.iconKey}
                       color={previewItem.catalogItem.defaultColor}
-                      rotation={0}
-                      isometric={platformRotation % 90 !== 0}
+                      rotation={previewItem.rotation}
+                      footprintWidth={previewItem.size?.width || previewItem.catalogItem.footprint.width}
+                      footprintLength={previewItem.size?.length || previewItem.catalogItem.footprint.length}
+                      objectPosition={getFurnitureImagePosition(
+                        previewItem.gridX,
+                        previewItem.gridY,
+                        previewItem.bounds
+                      )}
                     />
                   </span>
                 </div>
@@ -1778,95 +2771,101 @@ export default function RoomEditor() {
                 const isSelected = selectedKey === `${item.gridX},${item.gridY}`
                   || itemsByCell.get(selectedKey) === item;
                 const displayRotation = isSelected && rotationDraft !== null ? rotationDraft : item.rotation;
-                const occupiedCells = getOccupiedCells(item, displayRotation);
-                const bounds = getOccupiedBounds(occupiedCells);
+                const displayItem = {
+                  ...item,
+                  ...(furnitureMoveDraft?.placementId === item.placementId
+                    ? { gridX: furnitureMoveDraft.gridX, gridY: furnitureMoveDraft.gridY }
+                    : {}),
+                  ...(resizeDraft?.placementId === item.placementId
+                    ? {
+                      gridX: resizeDraft.gridX,
+                      gridY: resizeDraft.gridY,
+                      size: { width: resizeDraft.width, length: resizeDraft.length },
+                    }
+                    : {}),
+                };
+                const occupiedCells = getOccupiedCells(displayItem, displayRotation);
+                const bounds = getFurnitureBounds(displayItem, displayRotation, catalogItem);
                 return (
-                  <button
+                  <div
                     className={`placed-item ${isSelected ? 'selected' : ''}`}
                     key={`${item.gridX},${item.gridY}-${item.catalogItemId}`}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     draggable
                     onDragStart={(event) => handleFurnitureDragStart(event, item)}
                     style={{
                       '--item-color': item.customColor || catalogItem.defaultColor,
                       '--item-rotation': `${displayRotation}deg`,
-                      left: `${(item.gridX + bounds.minX) * 43 + 1}px`,
-                      top: `${(item.gridY + bounds.minY) * 43 + 1}px`,
-                      width: `${bounds.width * 42 + (bounds.width - 1)}px`,
-                      height: `${bounds.length * 42 + (bounds.length - 1)}px`,
+                      left: `${(displayItem.gridX + bounds.minX) * 43 + 1}px`,
+                      top: `${(displayItem.gridY + bounds.minY) * 43 + 1}px`,
+                      width: `${bounds.width * 43 - 1}px`,
+                      height: `${bounds.length * 43 - 1}px`,
                     }}
                     onClick={() => {
-                      setSelectedKey(`${item.gridX},${item.gridY}`);
+                      setSelectedKey(`${Math.floor(item.gridX)},${Math.floor(item.gridY)}`);
                       setSelectedArchitecturalElement(null);
                       setArmedItemId(null);
                     }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setSelectedKey(`${Math.floor(item.gridX)},${Math.floor(item.gridY)}`);
+                        setSelectedArchitecturalElement(null);
+                        setArmedItemId(null);
+                      }
+                    }}
                     onDragEnd={handleDragEnd}
-                    aria-label={`${catalogItem.name}, ${bounds.width} by ${bounds.length} footprint`}
+                    aria-label={`${catalogItem.name}, ${displayItem.size?.width || catalogItem.footprint.width} by ${displayItem.size?.length || catalogItem.footprint.length} grid units`}
                   >
                     <span className="placed-item-glyph">
                       <ItemGlyph
                         iconKey={catalogItem.iconKey}
                         color={item.customColor || catalogItem.defaultColor}
                         rotation={displayRotation}
-                        isometric={platformRotation % 90 !== 0}
+                        footprintWidth={displayItem.size?.width || catalogItem.footprint.width}
+                        footprintLength={displayItem.size?.length || catalogItem.footprint.length}
+                        objectPosition={getFurnitureImagePosition(
+                          displayItem.gridX,
+                          displayItem.gridY,
+                          bounds
+                        )}
                       />
                     </span>
-                  </button>
+                    {isSelected && (
+                      ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']
+                        .map((handle) => (
+                          <span
+                            className={`placed-item-resize-handle ${handle}`}
+                            key={handle}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Resize ${catalogItem.name} from the ${handle.replace('-', ' ')} side`}
+                            title={`Drag to resize from the ${handle.replace('-', ' ')} side`}
+                            onPointerDown={(event) => beginFurnitureResize(event, item, catalogItem, handle)}
+                            onPointerMove={updateFurnitureResize}
+                            onPointerUp={finishFurnitureResize}
+                            onPointerCancel={cancelFurnitureResize}
+                            onKeyDown={(event) => handleFurnitureResizeKeyDown(event, item, catalogItem)}
+                          />
+                        ))
+                    )}
+                  </div>
                 );
               })}
-              {[
-                { edgeX: -1, edgeY: -1, position: 'north-west', label: 'Resize room from top left' },
-                { edgeX: 0, edgeY: -1, position: 'north', label: 'Resize room from top edge' },
-                { edgeX: 1, edgeY: -1, position: 'north-east', label: 'Resize room from top right' },
-                { edgeX: 1, edgeY: 0, position: 'east', label: 'Resize room from right edge' },
-                { edgeX: 1, edgeY: 1, position: 'south-east', label: 'Resize room from bottom right' },
-                { edgeX: 0, edgeY: 1, position: 'south', label: 'Resize room from bottom edge' },
-                { edgeX: -1, edgeY: 1, position: 'south-west', label: 'Resize room from bottom left' },
-                { edgeX: -1, edgeY: 0, position: 'west', label: 'Resize room from left edge' },
-              ].map(({ edgeX, edgeY, position, label }) => (
-                <button
-                  key={position}
-                  type="button"
-                  className={`grid-resize-handle ${position}`}
-                  aria-label={label}
-                  title={label}
-                  onPointerDown={(event) => beginGridResize(event, edgeX, edgeY)}
-                  onPointerMove={resizeGridFromPointer}
-                  onPointerUp={endGridResize}
-                  onPointerCancel={endGridResize}
-                  onLostPointerCapture={endGridResize}
-                  onKeyDown={(event) => resizeGridFromKeyboard(event, edgeX, edgeY)}
-                />
-              ))}
             </div>
           </div>
         </main>
 
         <aside className="inspector-panel">
           {isDesigner && (
-            <details className="designer-inspector-accordion" open>
+            <details className="designer-inspector-accordion">
               <summary>Project details</summary>
               <div className="designer-project-fields">
                 <label className="inspector-field">
                   Client name
                   <input value={clientName} maxLength={120} onChange={(event) => setClientName(event.target.value)} />
                 </label>
-                <div className="designer-measurements">
-                  <label className="inspector-field">
-                    Measured width
-                    <input type="number" min="0.01" step="0.01" value={measurements.width} onChange={(event) => setMeasurements((current) => ({ ...current, width: event.target.value }))} />
-                  </label>
-                  <label className="inspector-field">
-                    Measured length
-                    <input type="number" min="0.01" step="0.01" value={measurements.length} onChange={(event) => setMeasurements((current) => ({ ...current, length: event.target.value }))} />
-                  </label>
-                  <label className="inspector-field">
-                    Unit
-                    <select value={measurements.unit} onChange={(event) => setMeasurements((current) => ({ ...current, unit: event.target.value }))}>
-                      <option value="ft">Feet</option><option value="in">Inches</option><option value="m">Meters</option><option value="cm">Centimeters</option><option value="mm">Millimeters</option>
-                    </select>
-                  </label>
-                </div>
                 <label className="inspector-field">
                   Design notes
                   <textarea rows={4} maxLength={5000} value={designNotes} onChange={(event) => setDesignNotes(event.target.value)} />
@@ -1877,22 +2876,20 @@ export default function RoomEditor() {
           <details className="designer-inspector-accordion designer-versions-accordion">
             <summary>Saved versions <span>{versions.length}</span></summary>
             <div className="designer-version-panel">
-              {isNew ? (
-                <p className="muted small">Save this room first to create and view versions.</p>
-              ) : (
-                <form onSubmit={handleSaveVersion}>
-                  <label className="inspector-field">
-                    Version name
-                    <input value={versionName} maxLength={60} onChange={(event) => setVersionName(event.target.value)} placeholder="e.g. Initial concept" />
-                  </label>
-                  <button className="btn-ghost" type="submit" disabled={versionSaving}>{versionSaving ? 'Saving…' : 'Save version'}</button>
-                </form>
-              )}
+              <form onSubmit={handleSaveVersion}>
+                <label className="inspector-field">
+                  Version name (optional)
+                  <input value={versionName} maxLength={60} onChange={(event) => setVersionName(event.target.value)} placeholder={`Version ${versions.length + 1}`} />
+                </label>
+                <button className="btn-ghost" type="submit" disabled={versionSaving || saving}>
+                  {versionSaving || saving ? 'Saving…' : isNew ? 'Save room & version' : 'Save version'}
+                </button>
+              </form>
+              {versionError && <p className="form-error" role="alert">{versionError}</p>}
+              {versionMessage && <p className="form-success" role="status">{versionMessage}</p>}
               {!isNew && (
                 <>
-                {versionsLoading && <p className="muted small">Loading versions…</p>}
-                {versionError && <p className="form-error" role="alert">{versionError}</p>}
-                {versionMessage && <p className="form-success" role="status">{versionMessage}</p>}
+               {versionsLoading && <p className="muted small">Loading versions…</p>}
                 {versions.map((version) => (
                   <div className="designer-version-row" key={version._id}>
                     <span><strong>{version.name}</strong><small>{new Date(version.createdAt).toLocaleString()}</small></span>
@@ -1909,77 +2906,54 @@ export default function RoomEditor() {
               )}
             </div>
           </details>
-          <p className="panel-heading">Room</p>
-          <label className="inspector-field">
-            Width
-            <input
-              type="number"
-              className="mono"
-              min={1}
-              max={50}
-              value={dimensions.width}
-              onChange={(e) => updateDimension('width', e.target.value)}
-            />
-          </label>
-          <label className="inspector-field">
-            Length
-            <input
-              type="number"
-              className="mono"
-              min={1}
-              max={50}
-              value={dimensions.length}
-              onChange={(e) => updateDimension('length', e.target.value)}
-            />
-          </label>
-          <p className="mono muted small">{placedItems.length} item(s) placed</p>
-
           {overlapRecords.length > 0 && (
-            <div className="overlap-records">
-              <div className="overlap-records-heading">
-                <p className="panel-heading">Overlap record</p>
-                <span className="overlap-count">{overlapRecords.length}</span>
+            <details className="designer-inspector-accordion overlap-records">
+              <summary>Placement warnings <span className="overlap-count">{overlapRecords.length}</span></summary>
+              <div className="overlap-record-content">
+                <div className="overlap-record-list">
+                  {overlapRecords.slice().reverse().map((record, index) => {
+                    const catalogItem = catalogById.get(record.catalogItemId?.toString());
+                    return (
+                      <div className="overlap-record" key={`${record.occurredAt}-${index}`}>
+                        <strong>{catalogItem?.name || 'Furniture'}</strong>
+                        <span className="mono">({record.gridX}, {record.gridY}) · {record.rotation}°</span>
+                        <small>{new Date(record.occurredAt).toLocaleString()}</small>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="muted small">Invalid placements are recorded but never saved as furniture.</p>
               </div>
-              <div className="overlap-record-list">
-                {overlapRecords.slice().reverse().map((record, index) => {
-                  const catalogItem = catalogById.get(record.catalogItemId?.toString());
-                  return (
-                    <div className="overlap-record" key={`${record.occurredAt}-${index}`}>
-                      <strong>{catalogItem?.name || 'Furniture'}</strong>
-                      <span className="mono">({record.gridX}, {record.gridY}) · {record.rotation}°</span>
-                      <small>{new Date(record.occurredAt).toLocaleString()}</small>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="muted small">Invalid placements are recorded but never saved as furniture.</p>
-            </div>
+            </details>
           )}
 
-          <div className="floor-options">
-            <p className="panel-heading">Floor &amp; grid</p>
-            <div className="floor-swatches">
-              {FLOOR_OPTIONS.map((option) => (
-                <button
-                  key={option.name}
-                  type="button"
-                  className={`floor-swatch ${floorColor === option.floor ? 'selected' : ''}`}
-                  style={{ '--swatch-floor': option.floor, '--swatch-grid': option.grid }}
-                  aria-label={`${option.name} floor and grid`}
-                  title={`${option.name} floor and grid`}
-                  onClick={() => {
-                    setFloorColor(option.floor);
-                    setGridColor(option.grid);
-                    setWorkspaceColor(option.workspace);
-                  }}
-                />
-              ))}
+          <details className="designer-inspector-accordion">
+            <summary>Floor &amp; grid</summary>
+            <div className="floor-options">
+              <div className="floor-swatches">
+                {FLOOR_OPTIONS.map((option) => (
+                  <button
+                    key={option.name}
+                    type="button"
+                    className={`floor-swatch ${floorColor === option.floor ? 'selected' : ''}`}
+                    style={{ '--swatch-floor': option.floor, '--swatch-grid': option.grid }}
+                    aria-label={`${option.name} floor and grid`}
+                    title={`${option.name} floor and grid`}
+                    onClick={() => {
+                      setFloorColor(option.floor);
+                      setGridColor(option.grid);
+                      setWorkspaceColor(option.workspace);
+                    }}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          </details>
 
-          {placedItems.length > 0 && (
+          <details className="designer-inspector-accordion placed-furniture-accordion">
+            <summary>Placed furniture <span>{placedItems.length}</span></summary>
             <div className="placed-items-list">
-              <p className="panel-heading">Placed furniture</p>
+              {!placedItems.length && <p className="muted small">No furniture placed yet.</p>}
               {placedItems.map((item) => {
                 const catalogItem = catalogById.get(item.catalogItemId);
                 if (!catalogItem) return null;
@@ -2018,11 +2992,15 @@ export default function RoomEditor() {
                 );
               })}
             </div>
-          )}
+          </details>
 
           {isDesigner && (
-            <div className="placed-items-list">
-              <p className="panel-heading">Placed architecture · {architecturalSegments.length + roomLabels.length}</p>
+            <details className="designer-inspector-accordion placed-architecture-accordion">
+              <summary>Architecture <span>{architecturalSegments.length + roomLabels.length}</span></summary>
+              <div className="placed-items-list">
+              {!architecturalSegments.length && !roomLabels.length && (
+                <p className="muted small">No walls, openings, or room labels yet.</p>
+              )}
               {architecturalSegments.map((segment) => {
                 const isSelected = selectedArchitecturalElement?.kind === 'segment'
                   && selectedArchitecturalElement.id === segment.id;
@@ -2093,10 +3071,8 @@ export default function RoomEditor() {
                   </div>
                 );
               })}
-              {!architecturalSegments.length && !roomLabels.length && (
-                <p className="muted small">No walls, openings, or room labels yet.</p>
-              )}
-            </div>
+              </div>
+            </details>
           )}
 
         </aside>
@@ -2131,13 +3107,17 @@ export default function RoomEditor() {
                 }}
                 aria-label={`Saved ${versionPreview.name} room layout`}
               >
-                {Array.from({ length: versionPreview.snapshot.dimensions.width * versionPreview.snapshot.dimensions.length }, (_, index) => (
-                  <span
-                    className="version-preview-cell"
-                    key={`cell-${index}`}
-                    style={{ gridColumn: (index % versionPreview.snapshot.dimensions.width) + 1, gridRow: Math.floor(index / versionPreview.snapshot.dimensions.width) + 1 }}
-                  />
-                ))}
+                {Array.from({ length: versionPreview.snapshot.dimensions.width * versionPreview.snapshot.dimensions.length }, (_, index) => {
+                  const x = index % versionPreview.snapshot.dimensions.width;
+                  const y = Math.floor(index / versionPreview.snapshot.dimensions.width);
+                  return (
+                    <span
+                      className={`version-preview-cell${versionFloorCellSet.has(`${x},${y}`) ? '' : ' void-cell'}`}
+                      key={`cell-${index}`}
+                      style={{ gridColumn: x + 1, gridRow: y + 1 }}
+                    />
+                  );
+                })}
                 <svg
                   className="version-architecture-overlay"
                   viewBox={`0 0 ${versionPreview.snapshot.dimensions.width * 25 + 2} ${versionPreview.snapshot.dimensions.length * 25 + 2}`}
@@ -2193,20 +3173,28 @@ export default function RoomEditor() {
                   const radians = (item.rotation * Math.PI) / 180;
                   const cosine = Math.abs(Math.cos(radians));
                   const sine = Math.abs(Math.sin(radians));
-                  const width = Math.max(1, Math.ceil(catalogItem.footprint.length * cosine + catalogItem.footprint.width * sine - 1e-9));
-                  const length = Math.max(1, Math.ceil(catalogItem.footprint.length * sine + catalogItem.footprint.width * cosine - 1e-9));
+                  const footprintWidth = item.size?.width || catalogItem.footprint.width;
+                  const footprintLength = item.size?.length || catalogItem.footprint.length;
+                  const width = Math.max(0.25, footprintWidth * cosine + footprintLength * sine);
+                  const length = Math.max(0.25, footprintWidth * sine + footprintLength * cosine);
                   return (
                     <div
                       className="version-preview-item"
                       key={item.placementId || index}
                       title={`${catalogItem.name} · ${item.rotation}°`}
                       style={{
-                        gridColumn: `${item.gridX + 1} / span ${width}`,
-                        gridRow: `${item.gridY + 1} / span ${length}`,
+                        gridColumn: `${item.gridX + 1} / span ${Math.ceil(width)}`,
+                        gridRow: `${item.gridY + 1} / span ${Math.ceil(length)}`,
                         '--item-color': item.customColor || catalogItem.defaultColor,
                       }}
                     >
-                      <ItemGlyph iconKey={catalogItem.iconKey} color={item.customColor || catalogItem.defaultColor} rotation={item.rotation} isometric={platformRotation % 90 !== 0} />
+                      <ItemGlyph
+                        iconKey={catalogItem.iconKey}
+                        color={item.customColor || catalogItem.defaultColor}
+                        rotation={item.rotation}
+                        footprintWidth={footprintWidth}
+                        footprintLength={footprintLength}
+                      />
                     </div>
                   );
                 })}

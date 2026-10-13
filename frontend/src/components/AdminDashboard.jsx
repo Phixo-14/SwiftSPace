@@ -84,6 +84,8 @@ export default function AdminDashboard() {
   const [creating, setCreating] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState(null);
+  const [updatingUserRoleId, setUpdatingUserRoleId] = useState(null);
+  const [userRoleDrafts, setUserRoleDrafts] = useState({});
   const [message, setMessage] = useState('');
   const [userMessage, setUserMessage] = useState('');
   const [error, setError] = useState('');
@@ -202,6 +204,31 @@ export default function AdminDashboard() {
     }
   }
 
+  async function handleUpdateUserRole(account) {
+    const role = userRoleDrafts[account._id] || account.role;
+    if (role === account.role) return;
+    setUpdatingUserRoleId(account._id);
+    setError('');
+    setUserMessage('');
+    try {
+      const { data } = await api.patch(`/auth/users/${account._id}/role`, { role });
+      setOverview((current) => current && ({
+        ...current,
+        users: current.users.map((user) => user._id === account._id ? data.user : user),
+      }));
+      setUserRoleDrafts((current) => {
+        const next = { ...current };
+        delete next[account._id];
+        return next;
+      });
+      setUserMessage(`${data.user.username} is now a ${role === 'homeowner' ? 'homeowner' : 'interior designer'}.`);
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Could not update account type.');
+    } finally {
+      setUpdatingUserRoleId(null);
+    }
+  }
+
   const overlapGroups = (overview?.recentOverlaps || []).reduce((groups, record) => {
     const username = record.username || 'Unknown user';
     if (!groups[username]) groups[username] = [];
@@ -222,7 +249,7 @@ export default function AdminDashboard() {
       <aside className="admin-hover-sidebar" aria-label="Admin navigation">
         <div className="admin-sidebar-brand">
           <span className="admin-brand-mark">+</span>
-          <span className="admin-sidebar-label">Studio Grid</span>
+          <span className="admin-sidebar-label">SwiftSpace</span>
         </div>
         <nav className="admin-sidebar-nav">
           <a href="#admin-overview"><span className="admin-nav-icon">⌂</span><span className="admin-sidebar-label">Overview</span></a>
@@ -255,7 +282,7 @@ export default function AdminDashboard() {
         <div className="admin-brand">
           <span className="admin-brand-mark">+</span>
           <div>
-            <p className="eyebrow">Studio Grid / Control room</p>
+            <p className="eyebrow">SwiftSpace / Control room</p>
             <h1>Admin dashboard</h1>
           </div>
         </div>
@@ -454,18 +481,48 @@ export default function AdminDashboard() {
                     <div className="user-row" key={account._id}>
                       <span className="user-avatar">{account.username.slice(0, 1).toUpperCase()}</span>
                       <span className="user-details"><strong>{account.username}</strong><small>{account.email}</small></span>
-                      <span className={`role-badge ${account.role}`}>{account.role === 'interior-designer' ? 'Interior designer' : account.role}</span>
+                      <span className={`role-badge ${account.role}`}>
+                        {account.role === 'interior-designer'
+                          ? 'Interior designer'
+                          : account.role === 'homeowner' ? 'Homeowner / Client' : 'Admin'}
+                      </span>
                       {account.role !== 'admin' && (
-                        <button
-                          className="user-delete-button"
-                          type="button"
-                          onClick={() => handleDeleteUser(account)}
-                          disabled={deletingUserId === account._id}
-                          aria-label={`Delete ${account.username}`}
-                          title={`Delete ${account.username}`}
-                        >
-                          {deletingUserId === account._id ? 'Deleting…' : 'Delete'}
-                        </button>
+                        <>
+                          <label className="admin-user-role-control">
+                            <span className="sr-only">Account type for {account.username}</span>
+                            <select
+                              value={userRoleDrafts[account._id] || account.role}
+                              onChange={(event) => setUserRoleDrafts((current) => ({
+                                ...current,
+                                [account._id]: event.target.value,
+                              }))}
+                              aria-label={`Account type for ${account.username}`}
+                            >
+                              <option value="homeowner">Homeowner / Client</option>
+                              <option value="interior-designer">Interior designer</option>
+                            </select>
+                          </label>
+                          <button
+                            className="user-role-save-button"
+                            type="button"
+                            onClick={() => handleUpdateUserRole(account)}
+                            disabled={updatingUserRoleId === account._id
+                              || (userRoleDrafts[account._id] || account.role) === account.role}
+                            aria-label={`Save account type for ${account.username}`}
+                          >
+                            {updatingUserRoleId === account._id ? 'Saving…' : 'Save role'}
+                          </button>
+                          <button
+                            className="user-delete-button"
+                            type="button"
+                            onClick={() => handleDeleteUser(account)}
+                            disabled={deletingUserId === account._id}
+                            aria-label={`Delete ${account.username}`}
+                            title={`Delete ${account.username}`}
+                          >
+                            {deletingUserId === account._id ? 'Deleting…' : 'Delete'}
+                          </button>
+                        </>
                       )}
                     </div>
                   ))}

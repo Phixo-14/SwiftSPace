@@ -41,7 +41,7 @@ export default function AccountSettings() {
       <aside className="admin-hover-sidebar" aria-label="Workspace navigation">
         <div className="admin-sidebar-brand">
           <span className="admin-brand-mark">+</span>
-          <span className="admin-sidebar-label">Studio Grid</span>
+          <span className="admin-sidebar-label">SwiftSpace</span>
         </div>
         <nav className="admin-sidebar-nav">
           <Link to="/"><span className="admin-nav-icon">⌂</span><span className="admin-sidebar-label">My layouts</span></Link>
@@ -52,7 +52,7 @@ export default function AccountSettings() {
 
       <header className="topbar">
         <div>
-          <p className="eyebrow">Studio Grid</p>
+          <p className="eyebrow">SwiftSpace</p>
           <h1>Manage account</h1>
         </div>
         <div className="topbar-actions">

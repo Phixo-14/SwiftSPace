@@ -1,8 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Use the same hosted API in local development and production so both URLs
-// read and write the same Atlas-backed application data.
+// Keep local development pointed at the local backend. Production uses VITE_API_URL.
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -10,7 +9,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'https://swiftspace-api.onrender.com',
+        target: 'http://localhost:5000',
         changeOrigin: true,
       },
     },

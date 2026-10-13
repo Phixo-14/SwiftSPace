@@ -50,12 +50,9 @@ export default function Login() {
         const username = nameWords.length === 2
           ? nameWords.join(' ')
           : `${nameWords[0] || 'User'} User`;
-        const pendingRole = localStorage.getItem('firebase_pending_role')
-          || sessionStorage.getItem('firebase_pending_role');
         const { data } = await api.post('/auth/firebase-sync', {
           idToken: firebaseToken,
           username,
-          role: pendingRole || undefined,
         });
         localStorage.removeItem('firebase_pending_username');
         localStorage.removeItem('firebase_pending_role');
@@ -151,7 +148,7 @@ export default function Login() {
           <div className="auth-preview-brand">
             <span className="auth-preview-mark">+</span>
             <div>
-              <p className="eyebrow">Studio Grid</p>
+              <p className="eyebrow">SwiftSpace</p>
               <p>2D room planning studio</p>
             </div>
           </div>
@@ -171,9 +168,8 @@ export default function Login() {
         </section>
 
         <div className="auth-card">
-          <p className="eyebrow">Studio Grid</p>
+          <p className="eyebrow">SwiftSpace</p>
           <h1>Sign in</h1>
-          <p className="auth-sub">Pick up your saved layouts where you left off.</p>
           <form onSubmit={handleSubmit} noValidate>
             <label>
               Email

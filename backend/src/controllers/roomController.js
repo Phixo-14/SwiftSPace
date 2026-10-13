@@ -21,6 +21,68 @@ function validateArchitecturalBounds(dimensions, segments, labels) {
   return labelOutsideRoom ? 'Room labels must stay inside the room boundary.' : null;
 }
 
+function createFullFloor(dimensions) {
+  return Array.from({ length: dimensions.width * dimensions.length }, (_, index) => ({
+    x: index % dimensions.width,
+    y: Math.floor(index / dimensions.width),
+  }));
+}
+
+function validateFloorShape(dimensions, floorCells) {
+  if (!floorCells.length) return 'A room must contain at least one floor cell.';
+  const floor = new Set(floorCells.map(({ x, y }) => `${x},${y}`));
+  if (floor.size !== floorCells.length) return 'Room floor cells cannot contain duplicates.';
+  if (floorCells.some(({ x, y }) => x < 0 || y < 0 || x >= dimensions.width || y >= dimensions.length)) {
+    return 'Room floor cells must be inside the room dimensions.';
+  }
+  const pending = [floorCells[0]];
+  const reached = new Set();
+  while (pending.length) {
+    const { x, y } = pending.pop();
+    const key = `${x},${y}`;
+    if (reached.has(key)) continue;
+    reached.add(key);
+    [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]].forEach(([nextX, nextY]) => {
+      const nextKey = `${nextX},${nextY}`;
+      if (floor.has(nextKey) && !reached.has(nextKey)) pending.push({ x: nextX, y: nextY });
+    });
+  }
+  return reached.size === floor.size ? null : 'Room floor cells must form one connected layout.';
+}
+
+function validateArchitectureOnFloor(floorCells, segments, labels) {
+  const floor = new Set(floorCells.map(({ x, y }) => `${x},${y}`));
+  const pointIsOnFloor = (x, y) => {
+    const epsilon = 1e-7;
+    for (let cellY = Math.floor(y) - 1; cellY <= Math.floor(y) + 1; cellY += 1) {
+      for (let cellX = Math.floor(x) - 1; cellX <= Math.floor(x) + 1; cellX += 1) {
+        if (floor.has(`${cellX},${cellY}`)
+          && x >= cellX - epsilon && x <= cellX + 1 + epsilon
+          && y >= cellY - epsilon && y <= cellY + 1 + epsilon) return true;
+      }
+    }
+    return false;
+  };
+
+  for (const segment of segments) {
+    const length = Math.hypot(segment.endX - segment.startX, segment.endY - segment.startY);
+    const steps = Math.max(1, Math.ceil(length * 4));
+    for (let step = 0; step <= steps; step += 1) {
+      const progress = step / steps;
+      const x = segment.startX + (segment.endX - segment.startX) * progress;
+      const y = segment.startY + (segment.endY - segment.startY) * progress;
+      if (!pointIsOnFloor(x, y)) {
+        return `Placement error: ${segment.type} must stay on the room floor.`;
+      }
+    }
+  }
+
+  if (labels.some((label) => !floor.has(`${Math.floor(label.x)},${Math.floor(label.y)}`))) {
+    return 'Placement error: room labels must be placed on the room floor.';
+  }
+  return null;
+}
+
 async function getRoomExtras(roomId) {
   const [timer, placementErrors] = await Promise.all([
     RoomTimer.findOne({ roomId }).select('seconds').lean(),
@@ -57,13 +119,16 @@ async function saveRoomExtras(roomId, userId, timerSeconds, overlapRecords) {
 
 // Confirms every placedItem sits fully inside the room's own width/length
 // and references a catalog item that actually exists.
-async function assertItemsFitAndExist(dimensions, placedItems, architecturalSegments = []) {
+async function assertItemsFitAndExist(dimensions, placedItems, architecturalSegments = [], floorCells = []) {
   if (!placedItems.length) return null;
 
+  const validFloorCells = floorCells.length
+    ? new Set(floorCells.map(({ x, y }) => `${x},${y}`))
+    : null;
   const ids = [...new Set(placedItems.map((i) => i.catalogItemId))];
   const found = await CatalogItem.find({ _id: { $in: ids } }).select('_id footprint');
   const catalogById = new Map(found.map((item) => [item._id.toString(), item]));
-  const occupied = new Set();
+  const placedBounds = [];
   const doors = architecturalSegments.filter((segment) => segment.type === 'door');
   const epsilon = 1e-9;
 
@@ -76,19 +141,36 @@ async function assertItemsFitAndExist(dimensions, placedItems, architecturalSegm
     const radians = (item.rotation * Math.PI) / 180;
     const cosine = Math.abs(Math.cos(radians));
     const sine = Math.abs(Math.sin(radians));
-    const rotatedWidth = Math.max(1, Math.ceil(
-      catalogItem.footprint.length * cosine + catalogItem.footprint.width * sine - 1e-9
-    ));
-    const rotatedLength = Math.max(1, Math.ceil(
-      catalogItem.footprint.length * sine + catalogItem.footprint.width * cosine - 1e-9
-    ));
+    const footprintWidth = item.size?.width || catalogItem.footprint.width;
+    const footprintLength = item.size?.length || catalogItem.footprint.length;
+    const rotatedWidth = Math.max(0.25, footprintWidth * cosine + footprintLength * sine);
+    const rotatedLength = Math.max(0.25, footprintWidth * sine + footprintLength * cosine);
+    const bounds = {
+      left: item.gridX,
+      top: item.gridY,
+      right: item.gridX + rotatedWidth,
+      bottom: item.gridY + rotatedLength,
+    };
+    if (bounds.left < 0 || bounds.top < 0
+      || bounds.right > dimensions.width + epsilon || bounds.bottom > dimensions.length + epsilon) {
+      return `Item at (${item.gridX}, ${item.gridY}) falls outside a ${dimensions.width}x${dimensions.length} room.`;
+    }
+    if (placedBounds.some((other) => (
+      bounds.left < other.right - epsilon && bounds.right > other.left + epsilon
+      && bounds.top < other.bottom - epsilon && bounds.bottom > other.top + epsilon
+    ))) {
+      return `Furniture footprints overlap at (${item.gridX}, ${item.gridY}).`;
+    }
+    placedBounds.push(bounds);
 
-    for (let offsetY = 0; offsetY < rotatedLength; offsetY += 1) {
-      for (let offsetX = 0; offsetX < rotatedWidth; offsetX += 1) {
-        const x = item.gridX + offsetX;
-        const y = item.gridY + offsetY;
-        if (x < 0 || y < 0 || x >= dimensions.width || y >= dimensions.length) {
-          return `Item at (${item.gridX}, ${item.gridY}) falls outside a ${dimensions.width}x${dimensions.length} room.`;
+    const minCellX = Math.floor(bounds.left);
+    const minCellY = Math.floor(bounds.top);
+    const maxCellX = Math.ceil(bounds.right - epsilon);
+    const maxCellY = Math.ceil(bounds.bottom - epsilon);
+    for (let y = minCellY; y < maxCellY; y += 1) {
+      for (let x = minCellX; x < maxCellX; x += 1) {
+        if (validFloorCells && !validFloorCells.has(`${x},${y}`)) {
+          return `Item at (${x}, ${y}) falls outside the room floor.`;
         }
         const doorOverlap = doors.some((door) => {
           const minX = Math.min(door.startX, door.endX);
@@ -98,17 +180,12 @@ async function assertItemsFitAndExist(dimensions, placedItems, architecturalSegm
           const horizontal = Math.abs(door.startY - door.endY) < epsilon;
 
           return horizontal
-            ? door.startY >= y - epsilon && door.startY <= y + 1 + epsilon
-              && maxX >= x - epsilon && minX <= x + 1 + epsilon
-            : door.startX >= x - epsilon && door.startX <= x + 1 + epsilon
-              && maxY >= y - epsilon && minY <= y + 1 + epsilon;
+            ? door.startY >= bounds.top - epsilon && door.startY <= bounds.bottom + epsilon
+              && maxX >= bounds.left - epsilon && minX <= bounds.right + epsilon
+            : door.startX >= bounds.left - epsilon && door.startX <= bounds.right + epsilon
+              && maxY >= bounds.top - epsilon && minY <= bounds.bottom + epsilon;
         });
         if (doorOverlap) return `Furniture at (${x}, ${y}) overlaps a door opening.`;
-        const cellKey = `${x},${y}`;
-        if (occupied.has(cellKey)) {
-          return `Furniture footprints overlap at (${x}, ${y}).`;
-        }
-        occupied.add(cellKey);
       }
     }
   }
@@ -166,15 +243,24 @@ async function createRoom(req, res) {
   const {
     roomName, clientName, measurements, designNotes, timerSeconds, dimensions,
     floorColor, gridColor, placedItems, overlapRecords, wallThicknessMm,
-    architecturalSegments, roomLabels,
+    architecturalSegments, roomLabels, floorCells,
   } = req.body;
 
-  const fitError = await assertItemsFitAndExist(dimensions, placedItems, architecturalSegments || []);
+  const roomFloorCells = floorCells?.length ? floorCells : createFullFloor(dimensions);
+  const floorShapeError = validateFloorShape(dimensions, roomFloorCells);
+  if (floorShapeError) return res.status(400).json({ message: floorShapeError });
+  const fitError = await assertItemsFitAndExist(dimensions, placedItems, architecturalSegments || [], roomFloorCells);
   if (fitError) return res.status(400).json({ message: fitError });
   const designer = canUseArchitecturalTools(req.user);
   if (designer) {
     const architectureError = validateArchitecturalBounds(dimensions, architecturalSegments, roomLabels);
     if (architectureError) return res.status(400).json({ message: architectureError });
+    const floorArchitectureError = validateArchitectureOnFloor(
+      roomFloorCells,
+      architecturalSegments,
+      roomLabels
+    );
+    if (floorArchitectureError) return res.status(400).json({ message: floorArchitectureError });
   }
 
   const room = await Room.create({
@@ -184,11 +270,29 @@ async function createRoom(req, res) {
     measurements,
     designNotes,
     dimensions,
+    floorCells: roomFloorCells,
     floorColor,
     gridColor,
     ...(designer ? { wallThicknessMm, architecturalSegments, roomLabels } : {}),
     placedItems,
   });
+  const rotationAdjustments = placedItems
+    .filter((item) => item.rotation !== 0)
+    .map((item) => ({
+      roomId: room._id,
+      userId: req.user.id,
+      placementId: item.placementId,
+      catalogItemId: item.catalogItemId,
+      fromDegrees: 0,
+      toDegrees: item.rotation,
+    }));
+  if (rotationAdjustments.length) {
+    try {
+      await FurnitureRotationAdjustment.insertMany(rotationAdjustments);
+    } catch (error) {
+      console.error(`Rotation adjustment logging failed for ${room._id}:`, error);
+    }
+  }
   try {
     await saveRoomExtras(room._id, req.user.id, timerSeconds, overlapRecords);
   } catch (error) {
@@ -214,14 +318,23 @@ async function updateRoom(req, res) {
   const {
     roomName, clientName, measurements, designNotes, timerSeconds, dimensions,
     floorColor, gridColor, placedItems, overlapRecords, wallThicknessMm,
-    architecturalSegments, roomLabels,
+    architecturalSegments, roomLabels, floorCells,
   } = req.body;
-  const fitError = await assertItemsFitAndExist(dimensions, placedItems, architecturalSegments || []);
+  const roomFloorCells = floorCells?.length ? floorCells : createFullFloor(dimensions);
+  const floorShapeError = validateFloorShape(dimensions, roomFloorCells);
+  if (floorShapeError) return res.status(400).json({ message: floorShapeError });
+  const fitError = await assertItemsFitAndExist(dimensions, placedItems, architecturalSegments || [], roomFloorCells);
   if (fitError) return res.status(400).json({ message: fitError });
   const designer = canUseArchitecturalTools(req.user);
   if (designer) {
     const architectureError = validateArchitecturalBounds(dimensions, architecturalSegments, roomLabels);
     if (architectureError) return res.status(400).json({ message: architectureError });
+    const floorArchitectureError = validateArchitectureOnFloor(
+      roomFloorCells,
+      architecturalSegments,
+      roomLabels
+    );
+    if (floorArchitectureError) return res.status(400).json({ message: floorArchitectureError });
   }
 
   const previousPlacements = new Map(room.placedItems.map((item) => [item.placementId, item]));
@@ -244,6 +357,7 @@ async function updateRoom(req, res) {
     room.measurements = measurements;
     room.designNotes = designNotes;
     room.dimensions = dimensions;
+    room.floorCells = roomFloorCells;
     room.floorColor = floorColor;
     room.gridColor = gridColor;
     if (designer) {
@@ -306,6 +420,7 @@ async function duplicateRoom(req, res) {
     measurements: source.measurements,
     designNotes: source.designNotes,
     dimensions: source.dimensions,
+    floorCells: source.floorCells?.length ? source.floorCells : createFullFloor(source.dimensions),
     floorColor: source.floorColor,
     gridColor: source.gridColor,
     wallThicknessMm: source.wallThicknessMm,
@@ -368,6 +483,7 @@ async function createRoomVersion(req, res) {
       measurements: room.measurements,
       designNotes: room.designNotes,
       dimensions: room.dimensions,
+      floorCells: room.floorCells,
       floorColor: room.floorColor,
       gridColor: room.gridColor,
       ...(canUseArchitecturalTools(req.user) ? {
@@ -402,10 +518,24 @@ async function restoreRoomVersion(req, res) {
   const version = await RoomVersion.findOne({ _id: req.params.versionId, roomId: room._id, userId: req.user.id });
   if (!version) return res.status(404).json({ message: 'Project version not found.' });
   const snapshot = version.snapshot;
+  const floorCells = snapshot.floorCells?.length
+    ? snapshot.floorCells
+    : createFullFloor(snapshot.dimensions);
+  const floorShapeError = validateFloorShape(snapshot.dimensions, floorCells);
+  if (floorShapeError) return res.status(400).json({ message: floorShapeError });
+  if (canUseArchitecturalTools(req.user)) {
+    const floorArchitectureError = validateArchitectureOnFloor(
+      floorCells,
+      snapshot.architecturalSegments || [],
+      snapshot.roomLabels || []
+    );
+    if (floorArchitectureError) return res.status(400).json({ message: floorArchitectureError });
+  }
   const fitError = await assertItemsFitAndExist(
     snapshot.dimensions,
     snapshot.placedItems,
     snapshot.architecturalSegments || [],
+    floorCells,
   );
   if (fitError) return res.status(400).json({ message: fitError });
 
@@ -414,6 +544,7 @@ async function restoreRoomVersion(req, res) {
   room.measurements = snapshot.measurements;
   room.designNotes = snapshot.designNotes;
   room.dimensions = snapshot.dimensions;
+  room.floorCells = floorCells;
   room.floorColor = snapshot.floorColor;
   room.gridColor = snapshot.gridColor;
   if (canUseArchitecturalTools(req.user)) {
@@ -466,7 +597,7 @@ async function getSharedRoom(req, res) {
     return res.status(404).json({ message: 'Shared room not found or link revoked.' });
   }
   const room = await Room.findOne({ shareToken: req.params.token })
-    .select('roomName dimensions floorColor gridColor placedItems')
+    .select('roomName dimensions floorCells floorColor gridColor placedItems')
     .populate('placedItems.catalogItemId', 'name category footprint iconKey defaultColor');
   if (!room) return res.status(404).json({ message: 'Shared room not found or link revoked.' });
   res.json(room);

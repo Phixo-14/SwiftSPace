@@ -1,4 +1,4 @@
-# Studio Grid — 2D Isometric Room Designer (MERN Prototype)
+# SwiftSpace — 2D Isometric Room Designer (MERN Prototype)
 
 This is a working prototype of the backend + frontend described in your
 proposal, built on the required stack:

@@ -31,6 +31,10 @@ export default function Dashboard() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setError('');
+    setRooms([]);
+    setFolders([]);
+    setActiveFolderId('all');
     const requests = [api.get('/rooms'), isDesigner ? api.get('/rooms/folders') : Promise.resolve({ data: [] })];
     Promise.all(requests)
       .then(([roomsResponse, foldersResponse]) => {
@@ -47,7 +51,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [isDesigner]);
+  }, [isDesigner, user?.id]);
 
   const visibleRooms = rooms.filter((room) => {
     if (!isDesigner || activeFolderId === 'all') return true;
@@ -207,7 +211,7 @@ export default function Dashboard() {
       <aside className="admin-hover-sidebar" aria-label="Workspace navigation">
         <div className="admin-sidebar-brand">
           <span className="admin-brand-mark">+</span>
-          <span className="admin-sidebar-label">Studio Grid</span>
+          <span className="admin-sidebar-label">SwiftSpace</span>
         </div>
         <nav className="admin-sidebar-nav">
           <a href="#dashboard-overview"><span className="admin-nav-icon">⌂</span><span className="admin-sidebar-label">{isDesigner ? 'Projects' : 'My layouts'}</span></a>
@@ -217,7 +221,7 @@ export default function Dashboard() {
       </aside>
       <header className="topbar">
         <div>
-          <p className="eyebrow">Studio Grid</p>
+          <p className="eyebrow">SwiftSpace</p>
         </div>
         <div className="topbar-actions">
           <span className="who">{user?.username}</span>

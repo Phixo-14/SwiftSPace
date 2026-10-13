@@ -34,8 +34,8 @@ async function sendVerificationCode(user, code) {
   const message = {
     from: process.env.RESEND_FROM || process.env.SMTP_FROM,
     to: user.email,
-    subject: 'Verify your Studio Grid email',
-    text: `Your Studio Grid verification code is ${code}. It expires in 10 minutes.`,
+    subject: 'Verify your SwiftSpace email',
+    text: `Your SwiftSpace verification code is ${code}. It expires in 10 minutes.`,
   };
 
   const resendConfigured = process.env.RESEND_API_KEY
@@ -219,7 +219,6 @@ async function firebaseSync(req, res) {
   } else {
     user.firebaseUid = decoded.uid;
     user.emailVerified = true;
-    if (req.body.role) user.role = req.body.role;
     await user.save();
   }
 
@@ -477,6 +476,20 @@ async function deleteUser(req, res) {
   res.status(204).send();
 }
 
+async function updateUserRole(req, res) {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ message: 'Invalid user id.' });
+  }
+
+  const user = await User.findOneAndUpdate(
+    { _id: req.params.id, role: { $ne: 'admin' } },
+    { $set: { role: req.body.role } },
+    { new: true, runValidators: true }
+  ).select('_id username email role');
+  if (!user) return res.status(404).json({ message: 'User not found or cannot be changed.' });
+  res.json({ user });
+}
+
 // GET /api/auth/admin/overview — requires an existing admin token.
 async function getAdminOverview(req, res) {
   const [users, rooms, catalogItems, catalogCategoryItems, allRooms, timers, placementErrors, rotationAdjustments] = await Promise.all([
@@ -547,4 +560,4 @@ async function getAdminOverview(req, res) {
   });
 }
 
-module.exports = { register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, syncFirebaseUsersFromFirebase, createAdmin, createUser, deleteUser, verifyEmail, resendVerification, getAdminOverview };
+module.exports = { register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, syncFirebaseUsersFromFirebase, createAdmin, createUser, deleteUser, updateUserRole, verifyEmail, resendVerification, getAdminOverview };

@@ -5,9 +5,13 @@ const PlacedItemSchema = new mongoose.Schema(
   {
     placementId: { type: String, required: true, maxlength: 64, default: () => crypto.randomUUID() },
     catalogItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'CatalogItem', required: true },
-    gridX: { type: Number, required: true, min: 0 },
-    gridY: { type: Number, required: true, min: 0 },
+    gridX: { type: Number, required: true, min: 0, max: 50 },
+    gridY: { type: Number, required: true, min: 0, max: 50 },
     rotation: { type: Number, required: true, min: 0, max: 359, default: 0 },
+    size: {
+      width: { type: Number, min: 0.25, max: 50 },
+      length: { type: Number, min: 0.25, max: 50 },
+    },
     customColor: { type: String, default: null },
   },
   { _id: false }
@@ -29,6 +33,14 @@ const RoomSchema = new mongoose.Schema(
     dimensions: {
       width: { type: Number, required: true, min: 1, max: 50 },
       length: { type: Number, required: true, min: 1, max: 50 },
+    },
+    floorCells: {
+      type: [{
+        _id: false,
+        x: { type: Number, required: true, min: 0, max: 49 },
+        y: { type: Number, required: true, min: 0, max: 49 },
+      }],
+      default: [],
     },
     floorColor: { type: String, default: '#BCA17A' },
     gridColor: { type: String, default: '#8C7455' },
