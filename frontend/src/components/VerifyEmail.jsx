@@ -36,9 +36,11 @@ export default function VerifyEmail() {
             || email.split('@')[0],
           role: localStorage.getItem('firebase_pending_role')
             || sessionStorage.getItem('firebase_pending_role'),
+          termsAccepted: sessionStorage.getItem('firebase_pending_terms_accepted') === 'true',
         });
         sessionStorage.removeItem('firebase_pending_username');
         sessionStorage.removeItem('firebase_pending_role');
+        sessionStorage.removeItem('firebase_pending_terms_accepted');
         localStorage.removeItem('firebase_pending_username');
         localStorage.removeItem('firebase_pending_role');
         login(data.token, data.user);

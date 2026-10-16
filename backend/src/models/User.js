@@ -8,6 +8,7 @@ const UserSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true },
     role: { type: String, enum: ['homeowner', 'interior-designer', 'admin'], default: 'homeowner' },
     emailVerified: { type: Boolean, default: false },
+    termsAcceptedAt: { type: Date, default: null },
     emailVerificationCodeHash: { type: String, default: null },
     emailVerificationExpiresAt: { type: Date, default: null },
     passwordChangedAt: { type: Date, default: Date.now },

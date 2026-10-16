@@ -1841,6 +1841,21 @@ a {
   margin-bottom: 1rem;
 }
 
+.auth-card form .registration-consent {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.6rem;
+  line-height: 1.45;
+}
+
+.registration-consent input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  margin: 0.15rem 0 0;
+  accent-color: var(--accent);
+}
+
 .auth-card .btn-primary {
   width: 100%;
   margin-top: 0.25rem;

@@ -177,6 +177,7 @@ async function register(req, res) {
     passwordHash,
     role,
     emailVerified: false,
+    termsAcceptedAt: new Date(),
     emailVerificationCodeHash: hashVerificationCode(code),
     emailVerificationExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
     passwordChangedAt: new Date(),
@@ -331,6 +332,9 @@ async function firebaseSync(req, res) {
 
   let user = await User.findOne({ $or: [{ firebaseUid: decoded.uid }, { email: decoded.email }] });
   if (!user) {
+    if (req.body.termsAccepted !== true) {
+      return res.status(400).json({ message: 'You must accept the Terms of Service and Privacy Policy to create an account.' });
+    }
     user = await User.create({
       username: req.body.username,
       email: decoded.email,
@@ -338,10 +342,14 @@ async function firebaseSync(req, res) {
       passwordHash: crypto.randomBytes(32).toString('hex'),
       emailVerified: true,
       role: req.body.role || 'homeowner',
+      termsAcceptedAt: new Date(),
     });
   } else {
     user.firebaseUid = decoded.uid;
     user.emailVerified = true;
+    if (req.body.termsAccepted === true && !user.termsAcceptedAt) {
+      user.termsAcceptedAt = new Date();
+    }
     await user.save();
   }
 

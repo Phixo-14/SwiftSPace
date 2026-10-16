@@ -10,6 +10,7 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('homeowner');
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -30,6 +31,10 @@ export default function Register() {
       setError('Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.');
       return;
     }
+    if (!termsAccepted) {
+      setError('You must accept the Terms of Service and Privacy Policy to create an account.');
+      return;
+    }
     setLoading(true);
     try {
       if (firebaseConfigured) {
@@ -38,10 +43,17 @@ export default function Register() {
         await sendEmailVerification(credential.user);
         localStorage.setItem('firebase_pending_username', fullName);
         localStorage.setItem('firebase_pending_role', role);
+        sessionStorage.setItem('firebase_pending_terms_accepted', 'true');
         navigate(`/verify-email?email=${encodeURIComponent(email)}`);
         return;
       }
-      const { data } = await api.post('/auth/register', { username: fullName, email, password, role });
+      const { data } = await api.post('/auth/register', {
+        username: fullName,
+        email,
+        password,
+        role,
+        termsAccepted,
+      });
       navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
         state: { developmentCode: data.developmentCode, message: data.message },
       });
@@ -136,6 +148,15 @@ export default function Register() {
                 title="Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol."
                 required
               />
+            </label>
+            <label className="registration-consent">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(event) => setTermsAccepted(event.target.checked)}
+                required
+              />
+              <span>I agree to the SwiftSpace Terms of Service and Privacy Policy.</span>
             </label>
             {error && <p className="form-error">{error}</p>}
             <button type="submit" className="btn-primary" disabled={loading}>

@@ -3,12 +3,12 @@ const Joi = require('joi');
 const { register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, createAdmin, createUser, deleteUser, updateUserRole, verifyEmail, resendVerification, getAdminOverview, startMfaSetup, verifyMfaSetup, disableMfa, verifyMfaLogin } = require('../controllers/authController');
 const { getSystemLogs } = require('../controllers/systemLogController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { validateBody, registerSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, userRoleSchema, mfaSchema } = require('../middleware/validators');
+const { validateBody, registerSchema, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, userRoleSchema, mfaSchema } = require('../middleware/validators');
 const { loginLimiter } = require('../middleware/rateLimiters');
 
 const router = express.Router();
 
-router.post('/register', validateBody(registerSchema), register);
+router.post('/register', validateBody(publicRegisterSchema), register);
 router.post('/login', loginLimiter, validateBody(loginSchema), login);
 router.post('/login/mfa', loginLimiter, validateBody(loginSchema.keys({ code: Joi.string().pattern(/^\d{6}$/).required() })), verifyMfaLogin);
 router.post('/admin-login', loginLimiter, validateBody(loginSchema), adminLogin);
