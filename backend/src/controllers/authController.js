@@ -750,4 +750,24 @@ async function getAdminOverview(req, res) {
   });
 }
 
-module.exports = { register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, syncFirebaseUsersFromFirebase, createAdmin, createUser, deleteUser, updateUserRole, verifyEmail, resendVerification, getAdminOverview };
+module.exports = {
+  register,
+  login,
+  adminLogin,
+  firebaseSync,
+  deleteFirebaseUser,
+  deleteAccount,
+  syncFirebaseUsers,
+  syncFirebaseUsersFromFirebase,
+  createAdmin,
+  createUser,
+  deleteUser,
+  updateUserRole,
+  verifyEmail,
+  resendVerification,
+  getAdminOverview,
+  startMfaSetup,
+  verifyMfaSetup,
+  disableMfa,
+  verifyMfaLogin,
+};

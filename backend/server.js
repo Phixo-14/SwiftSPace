@@ -17,6 +17,7 @@ const catalogRoutes = require('./src/routes/catalogRoutes');
 const roomRoutes = require('./src/routes/roomRoutes');
 const { requireAuth, requireAdmin } = require('./src/middleware/auth');
 const { systemLoggingMiddleware, writeSystemLog } = require('./src/middleware/systemLogging');
+const { rejectMongoOperators } = require('./src/middleware/mongoInputGuard');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -56,6 +57,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json({ limit: '100kb' }));
+app.use(rejectMongoOperators);
 app.use(morgan('dev'));
 app.use('/api', systemLoggingMiddleware);
 
