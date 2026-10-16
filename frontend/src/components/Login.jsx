@@ -27,6 +27,10 @@ export default function Login() {
       setError('Please enter a valid email address.');
       return;
     }
+    if (!password) {
+      setError('Password is required.');
+      return;
+    }
     if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/.test(password)) {
       setError('Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.');
       return;
@@ -192,7 +196,7 @@ export default function Login() {
                 required
               />
             </label>
-            {error && <p className="form-error">{error}</p>}
+            {error && <p className="form-error" role="alert">{error}</p>}
             {resetMessage && <p className="form-success">{resetMessage}</p>}
             <button type="submit" className="btn-primary" disabled={loading || retryAfter > 0}>
               {loading ? 'Signing in…' : retryAfter > 0 ? `Try again in ${retryAfter}s` : 'Sign in'}
