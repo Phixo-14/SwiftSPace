@@ -31,10 +31,6 @@ export default function Login() {
       setError('Password is required.');
       return;
     }
-    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/.test(password)) {
-      setError('Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.');
-      return;
-    }
     setLoading(true);
     try {
       if (firebaseConfigured) {
@@ -190,9 +186,6 @@ export default function Login() {
               <PasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                minLength={12}
-                pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}"
-                title="Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol."
                 required
               />
             </label>

@@ -35,19 +35,31 @@ export default function Dashboard() {
     setRooms([]);
     setFolders([]);
     setActiveFolderId('all');
-    const requests = [api.get('/rooms'), isDesigner ? api.get('/rooms/folders') : Promise.resolve({ data: [] })];
-    Promise.all(requests)
-      .then(([roomsResponse, foldersResponse]) => {
+
+    const roomRequest = api.get('/rooms');
+    const folderRequest = isDesigner ? api.get('/rooms/folders') : Promise.resolve({ data: [] });
+
+    Promise.allSettled([roomRequest, folderRequest])
+      .then(([roomsResult, foldersResult]) => {
         if (cancelled) return;
-        setRooms(roomsResponse.data);
-        setFolders(foldersResponse.data);
-      })
-      .catch(() => {
-        if (!cancelled) setError('Could not load your rooms.');
+
+        if (roomsResult.status === 'fulfilled') {
+          setRooms(roomsResult.value.data);
+        } else {
+          setRooms([]);
+          setError('Could not load your rooms.');
+        }
+
+        if (foldersResult.status === 'fulfilled') {
+          setFolders(foldersResult.value.data);
+        } else if (isDesigner) {
+          setFolders([]);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
     return () => {
       cancelled = true;
     };

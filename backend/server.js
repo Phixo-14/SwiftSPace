@@ -104,6 +104,7 @@ async function ensureAdminAccount() {
   if (existing) {
     const passwordMatches = await bcrypt.compare(adminPassword, existing.passwordHash || '');
     existing.role = 'admin';
+    existing.emailVerified = true;
     if (!passwordMatches) existing.passwordHash = await bcrypt.hash(adminPassword, 10);
     await existing.save();
     return;
@@ -115,6 +116,7 @@ async function ensureAdminAccount() {
     email: adminEmail,
     passwordHash,
     role: 'admin',
+    emailVerified: true,
   });
 
   console.log(`Admin account ready for ${adminUsername}.`);
