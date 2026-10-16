@@ -50,8 +50,8 @@ const firebaseDeleteSchema = Joi.object({
 });
 
 const accountDeleteSchema = Joi.object({
-  idToken: Joi.string().optional(),
-}).default({});
+  password: Joi.string().min(1).max(72).required(),
+});
 
 const adminSchema = registerSchema.keys({ role: Joi.forbidden() });
 const userRoleSchema = Joi.object({

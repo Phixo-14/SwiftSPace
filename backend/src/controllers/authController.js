@@ -439,51 +439,69 @@ async function deleteAccount(req, res) {
     return res.status(403).json({ message: 'Admin accounts cannot be deleted here.' });
   }
 
+  const { password } = req.body;
   if (user.firebaseUid) {
-    const firebase = getFirebaseAdmin();
+    const apiKey = process.env.FIREBASE_WEB_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({ message: 'Password verification for this account is not configured.' });
+    }
+
+    let signInResponse;
     try {
-      if (firebase) {
+      signInResponse = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user.email, password, returnSecureToken: true }),
+        }
+      );
+    } catch (error) {
+      console.error(`Firebase password verification failed for account ${user._id}:`, error.message);
+      return res.status(502).json({ message: 'Could not verify your password with Firebase. Please try again.' });
+    }
+
+    const signInResult = await signInResponse.json();
+    if (!signInResponse.ok || signInResult.localId !== user.firebaseUid) {
+      const firebaseError = signInResult.error?.message;
+      if (['INVALID_PASSWORD', 'EMAIL_NOT_FOUND', 'INVALID_LOGIN_CREDENTIALS', 'USER_DISABLED'].includes(firebaseError)
+        || (signInResponse.ok && signInResult.localId !== user.firebaseUid)) {
+        return res.status(401).json({ message: 'Your password is incorrect.' });
+      }
+      console.error(`Firebase password verification failed for account ${user._id}:`, firebaseError || signInResponse.status);
+      return res.status(502).json({ message: 'Could not verify your password with Firebase. Please try again.' });
+    }
+
+    const firebase = getFirebaseAdmin();
+    if (firebase) {
+      try {
         await firebase.auth().deleteUser(user.firebaseUid);
-      } else {
-        const apiKey = process.env.FIREBASE_WEB_API_KEY;
-        const idToken = req.body?.idToken;
-        if (!apiKey || !idToken) {
-          return res.status(503).json({ message: 'Firebase account deletion is not configured for this session.' });
-        }
-
-        const lookupResponse = await fetch(
-          `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idToken }),
-          }
-        );
-        const lookupResult = await lookupResponse.json();
-        if (!lookupResponse.ok || lookupResult.users?.[0]?.localId !== user.firebaseUid) {
-          return res.status(401).json({ message: 'Your Firebase session is invalid. Sign out and sign in again.' });
-        }
-
-        const deleteResponse = await fetch(
+      } catch (error) {
+        if (error.code !== 'auth/user-not-found') throw error;
+      }
+    } else {
+      let deleteResponse;
+      try {
+        deleteResponse = await fetch(
           `https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${encodeURIComponent(apiKey)}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idToken }),
+            body: JSON.stringify({ idToken: signInResult.idToken }),
           }
         );
-        if (!deleteResponse.ok) {
-          const deleteResult = await deleteResponse.json();
-          const firebaseError = deleteResult.error?.message;
-          if (firebaseError === 'CREDENTIAL_TOO_OLD_LOGIN_AGAIN' || firebaseError === 'TOKEN_EXPIRED') {
-            return res.status(401).json({ message: 'For security, sign out and sign in again before deleting your account.' });
-          }
-          return res.status(502).json({ message: 'Firebase could not delete this account. Please try again.' });
-        }
+      } catch (error) {
+        console.error(`Firebase account deletion failed for account ${user._id}:`, error.message);
+        return res.status(502).json({ message: 'Firebase could not delete this account. Please try again.' });
       }
-    } catch (error) {
-      if (error.code !== 'auth/user-not-found') throw error;
+      if (!deleteResponse.ok) {
+        const deleteResult = await deleteResponse.json();
+        console.error(`Firebase account deletion failed for account ${user._id}:`, deleteResult.error?.message || deleteResponse.status);
+        return res.status(502).json({ message: 'Firebase could not delete this account. Please try again.' });
+      }
     }
+  } else if (!(await bcrypt.compare(password, user.passwordHash))) {
+    return res.status(401).json({ message: 'Your password is incorrect.' });
   }
 
   await deleteUserData([user._id]);

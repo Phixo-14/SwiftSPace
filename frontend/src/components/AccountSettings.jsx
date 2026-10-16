@@ -4,22 +4,33 @@ import { signOut } from 'firebase/auth';
 import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 import { firebaseAuth } from '../firebase.js';
+import PasswordInput from './PasswordInput.jsx';
 
 export default function AccountSettings() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [deletePending, setDeletePending] = useState(false);
+  const [password, setPassword] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
 
-  async function deleteAccount() {
+  function closeDeleteDialog() {
+    setDeletePending(false);
+    setPassword('');
+    setError('');
+  }
+
+  async function deleteAccount(event) {
+    event.preventDefault();
     setDeleting(true);
     setError('');
+    if (!password) {
+      setError('Password is required.');
+      setDeleting(false);
+      return;
+    }
     try {
-      const idToken = firebaseAuth?.currentUser
-        ? await firebaseAuth.currentUser.getIdToken(true)
-        : undefined;
-      await api.delete('/auth/account', { data: idToken ? { idToken } : {} });
+      await api.delete('/auth/account', { data: { password } });
       if (firebaseAuth) await signOut(firebaseAuth).catch(() => {});
       logout();
       navigate('/login', { replace: true });
@@ -81,19 +92,38 @@ export default function AccountSettings() {
       {deletePending && (
         <div className="delete-dialog-backdrop" role="presentation">
           <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="account-delete-title">
-            <div className="delete-dialog-icon" aria-hidden="true">×</div>
+            <button
+              className="delete-dialog-icon"
+              type="button"
+              aria-label="Close delete account dialog"
+              onClick={closeDeleteDialog}
+              disabled={deleting}
+            >
+              ×
+            </button>
             <p className="eyebrow">Account settings</p>
             <h2 id="account-delete-title">Delete your account?</h2>
             <p className="muted">Your account and all saved rooms will be permanently deleted. This cannot be undone.</p>
             {error && <p className="form-error" role="alert">{error}</p>}
-            <div className="delete-dialog-actions">
-              <button className="btn-ghost" type="button" onClick={() => setDeletePending(false)} disabled={deleting}>
-                Keep account
-              </button>
-              <button className="btn-danger" type="button" onClick={deleteAccount} disabled={deleting}>
-                {deleting ? 'Deleting…' : 'Delete account'}
-              </button>
-            </div>
+            <form onSubmit={deleteAccount} noValidate>
+              <label>
+                Confirm your password
+                <PasswordInput
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              <div className="delete-dialog-actions">
+                <button className="btn-ghost" type="button" onClick={closeDeleteDialog} disabled={deleting}>
+                  Keep account
+                </button>
+                <button className="btn-danger" type="submit" disabled={deleting}>
+                  {deleting ? 'Deleting…' : 'Delete account'}
+                </button>
+              </div>
+            </form>
           </section>
         </div>
       )}
