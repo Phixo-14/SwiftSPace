@@ -72,6 +72,18 @@ async function registrationStatus(req, res) {
   res.json({ registrationOpen: complete, adminSetupAvailable: !complete });
 }
 
+async function validateInitialAdminSetup(req, res) {
+  if (!hasValidInitialAdminToken(req.body.setupToken)) {
+    return res.status(403).json({ message: 'This administrator setup link is invalid or has already been used.' });
+  }
+
+  const setup = await getInitialAdminSetup();
+  if (setup?.status === 'complete' || setup?.status === 'setting-up') {
+    return res.status(409).json({ message: 'The one-time administrator setup has already been claimed.' });
+  }
+  res.json({ available: true });
+}
+
 async function setupInitialAdmin(req, res) {
   if (!hasValidInitialAdminToken(req.body.setupToken)) {
     return res.status(403).json({ message: 'This administrator setup link is invalid or has already been used.' });
@@ -947,6 +959,7 @@ async function getAdminOverview(req, res) {
 
 module.exports = {
   registrationStatus,
+  validateInitialAdminSetup,
   setupInitialAdmin,
   register,
   login,

@@ -60,6 +60,10 @@ const initialAdminSetupSchema = Joi.object({
   termsAccepted: Joi.boolean().valid(true).required(),
 }).xor('password', 'idToken');
 
+const initialAdminSetupTokenSchema = Joi.object({
+  setupToken: Joi.string().min(32).required(),
+});
+
 const firebaseDeleteSchema = Joi.object({
   uid: Joi.string().trim().min(1).max(128).required(),
 });
@@ -173,4 +177,4 @@ function validateBody(schema) {
   };
 }
 
-module.exports = { registerSchema, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, projectFolderSchema, roomFolderSchema, firebaseSyncSchema, initialAdminSetupSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, userRoleSchema, roomSchema, roomVersionSchema, validateBody };
+module.exports = { registerSchema, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, projectFolderSchema, roomFolderSchema, firebaseSyncSchema, initialAdminSetupSchema, initialAdminSetupTokenSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, userRoleSchema, roomSchema, roomVersionSchema, validateBody };

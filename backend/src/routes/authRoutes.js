@@ -1,14 +1,15 @@
 const express = require('express');
 const Joi = require('joi');
-const { registrationStatus, setupInitialAdmin, register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, createAdmin, createUser, deleteUser, updateUserRole, verifyEmail, resendVerification, getAdminOverview, startMfaSetup, verifyMfaSetup, disableMfa, verifyMfaLogin } = require('../controllers/authController');
+const { registrationStatus, validateInitialAdminSetup, setupInitialAdmin, register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, createAdmin, createUser, deleteUser, updateUserRole, verifyEmail, resendVerification, getAdminOverview, startMfaSetup, verifyMfaSetup, disableMfa, verifyMfaLogin } = require('../controllers/authController');
 const { getSystemLogs } = require('../controllers/systemLogController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { validateBody, registerSchema, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, initialAdminSetupSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, userRoleSchema, mfaSchema } = require('../middleware/validators');
+const { validateBody, registerSchema, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, initialAdminSetupSchema, initialAdminSetupTokenSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, userRoleSchema, mfaSchema } = require('../middleware/validators');
 const { loginLimiter } = require('../middleware/rateLimiters');
 
 const router = express.Router();
 
 router.get('/registration-status', registrationStatus);
+router.post('/initial-admin-setup/validate', validateBody(initialAdminSetupTokenSchema), validateInitialAdminSetup);
 router.post('/initial-admin-setup', validateBody(initialAdminSetupSchema), setupInitialAdmin);
 router.post('/register', validateBody(publicRegisterSchema), register);
 router.post('/login', loginLimiter, validateBody(loginSchema), login);

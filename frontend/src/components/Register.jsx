@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import api from '../api.js';
-import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendEmailVerification, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { firebaseAuth, firebaseConfigured } from '../firebase.js';
 import PasswordInput from './PasswordInput.jsx';
 
@@ -97,7 +97,17 @@ export default function Register() {
     setLoading(true);
     try {
       if (firebaseConfigured) {
-        const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+        if (adminSetupToken) {
+          await api.post('/auth/initial-admin-setup/validate', { setupToken: adminSetupToken });
+        }
+
+        let credential;
+        try {
+          credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+        } catch (firebaseError) {
+          if (!adminSetupToken || firebaseError.code !== 'auth/email-already-in-use') throw firebaseError;
+          credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+        }
         await updateProfile(credential.user, { displayName: fullName });
         if (adminSetupToken) {
           await api.post('/auth/initial-admin-setup', {
@@ -108,7 +118,7 @@ export default function Register() {
             termsAccepted,
           });
         }
-        await sendEmailVerification(credential.user);
+        if (!credential.user.emailVerified) await sendEmailVerification(credential.user);
         localStorage.setItem('firebase_pending_username', fullName);
         localStorage.setItem('firebase_pending_email', email);
         localStorage.setItem('firebase_pending_role', adminSetupToken ? 'admin' : role);
