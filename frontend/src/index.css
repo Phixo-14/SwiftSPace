@@ -1716,20 +1716,7 @@ a {
 
 .create-admin-section {
   background: linear-gradient(145deg, #1a3026, #12201b);
-}
-
-.create-user-section {
-  background: linear-gradient(145deg, #162821, #12201b);
-}
-
-.create-admin-section,
-.create-user-section {
   padding: 1.35rem;
-}
-
-.create-admin-section .admin-form,
-.create-user-section .admin-form {
-  margin-top: 1.25rem;
 }
 
 @media (max-width: 760px) {

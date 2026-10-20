@@ -79,13 +79,10 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const [overview, setOverview] = useState(null);
   const [form, setForm] = useState({ username: '', email: '', password: '' });
-  const [userForm, setUserForm] = useState({ username: '', email: '', password: '', role: 'homeowner' });
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [creatingUser, setCreatingUser] = useState(false);
   const [banningUserId, setBanningUserId] = useState(null);
   const [message, setMessage] = useState('');
-  const [userMessage, setUserMessage] = useState('');
   const [error, setError] = useState('');
   const [expandedOverlapUser, setExpandedOverlapUser] = useState(null);
   const [showSystemLogs, setShowSystemLogs] = useState(false);
@@ -159,25 +156,6 @@ export default function AdminDashboard() {
       setError(details ? details.join(' ') : requestError.response?.data?.message || 'Could not create admin account.');
     } finally {
       setCreating(false);
-    }
-  }
-
-  async function handleCreateUser(event) {
-    event.preventDefault();
-    setCreatingUser(true);
-    setUserMessage('');
-    setError('');
-    try {
-      await api.post('/auth/users', userForm);
-      setUserForm({ username: '', email: '', password: '', role: 'homeowner' });
-      setUserMessage('User account created.');
-      const { data } = await api.get('/auth/admin/overview');
-      setOverview(data);
-    } catch (requestError) {
-      const details = requestError.response?.data?.details;
-      setError(details ? details.join(' ') : requestError.response?.data?.message || 'Could not create user account.');
-    } finally {
-      setCreatingUser(false);
     }
   }
 
@@ -514,17 +492,6 @@ export default function AdminDashboard() {
               {message && <p className="form-success">{message}</p>}
             </section>
 
-            <section className="admin-section create-user-section">
-              <div className="section-heading"><div><p className="eyebrow">People</p><h3>Add a user</h3></div><span className="muted small">Admin-only action</span></div>
-              <form className="admin-form" onSubmit={handleCreateUser} noValidate>
-                <label>Name<input value={userForm.username} onChange={(event) => setUserForm({ ...userForm, username: event.target.value })} minLength={3} required /></label>
-                <label>Email<input type="email" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} required /></label>
-                <label>Password<PasswordInput value={userForm.password} onChange={(event) => setUserForm({ ...userForm, password: event.target.value })} minLength={8} required /></label>
-                <label>Account type<select value={userForm.role} onChange={(event) => setUserForm({ ...userForm, role: event.target.value })}><option value="homeowner">Homeowner / Client</option><option value="interior-designer">Interior Designer</option></select></label>
-                <button className="btn-primary" type="submit" disabled={creatingUser}>{creatingUser ? 'Creating…' : 'Create user'}</button>
-              </form>
-              {userMessage && <p className="form-success">{userMessage}</p>}
-            </section>
           </>
         )}
       </main>

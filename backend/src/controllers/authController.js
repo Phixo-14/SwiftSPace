@@ -804,29 +804,6 @@ async function createAdmin(req, res) {
   });
 }
 
-// POST /api/auth/users — requires an existing admin token.
-async function createUser(req, res) {
-  const { username, email, password, role } = req.body;
-  const cleanUsername = normalizeUsername(username);
-  const cleanEmail = sanitizeEmail(email);
-
-  if (!strongPassword(password)) {
-    return res.status(400).json({ message: 'Password must be 8–16 characters and include upper/lowercase letters, a number, and a symbol.' });
-  }
-
-  const existing = await User.findOne({ email: cleanEmail });
-  if (existing) {
-    return res.status(409).json({ message: 'A user with that email already exists.' });
-  }
-
-  const passwordHash = await bcrypt.hash(password, 10);
-  const user = await User.create({ username: cleanUsername, email: cleanEmail, passwordHash, role, emailVerified: true, passwordChangedAt: new Date() });
-
-  res.status(201).json({
-    user: { id: user._id, username: user.username, email: user.email, role: user.role },
-  });
-}
-
 // POST /api/auth/verify-email
 async function verifyEmail(req, res) {
   const { email, code } = req.body;
@@ -995,7 +972,6 @@ module.exports = {
   syncFirebaseUsers,
   syncFirebaseUsersFromFirebase,
   createAdmin,
-  createUser,
   banUser,
   verifyEmail,
   resendVerification,
