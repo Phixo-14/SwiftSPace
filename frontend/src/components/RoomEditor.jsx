@@ -1582,16 +1582,17 @@ export default function RoomEditor() {
     if (drag.mode === 'resize-segment') {
       updateArchitecturalDrag(event);
       const segment = drag.draft;
+      const segmentName = segment.type === 'window' ? 'Window' : segment.type === 'door' ? 'Door' : 'Wall';
       const valid = segment.startX !== segment.endX || segment.startY !== segment.endY;
       if (!valid) {
-        setStatus('A wall must be at least one half grid cell long.');
+        setStatus(`A ${segmentName.toLowerCase()} must be at least one half grid cell long.`);
       } else if (!isSegmentOnRoomFloor(segment)) {
-        setStatus('Placement error: the wall must stay on the room floor.');
+        setStatus(`Placement error: the ${segmentName.toLowerCase()} must stay on the room floor.`);
       } else {
         setArchitecturalSegments((current) => current.map((item) => (
           item.id === segment.id ? segment : item
         )));
-        setStatus('Wall length updated.');
+        setStatus(`${segmentName} length updated.`);
       }
       architecturalDragRef.current = null;
       setArchitecturalSegmentDraft(null);
@@ -1649,6 +1650,7 @@ export default function RoomEditor() {
       segment = {
         id: createPlacementId(),
         type: drag.type,
+        thicknessMm: wallThicknessMm,
         startX: drag.start.x,
         startY: drag.start.y,
         endX: drag.end.x,
@@ -2285,13 +2287,32 @@ export default function RoomEditor() {
                 ))}
               </div>
               <label className="inspector-field architect-thickness">
-                Wall thickness
+                Default wall thickness
                 <select value={wallThicknessMm} onChange={(event) => setWallThicknessMm(Number(event.target.value))}>
                   {[100, 125, 150, 200, 250, 300].map((thickness) => (
                     <option value={thickness} key={thickness}>{thickness} mm</option>
                   ))}
                 </select>
               </label>
+              {selectedArchitecturalElement?.kind === 'segment'
+                && architecturalSegments.find((segment) => segment.id === selectedArchitecturalElement.id)?.type === 'wall' && (
+                <label className="inspector-field architect-thickness">
+                  Selected wall thickness
+                  <select
+                    value={architecturalSegments.find((segment) => segment.id === selectedArchitecturalElement.id)?.thicknessMm || wallThicknessMm}
+                    onChange={(event) => {
+                      const thicknessMm = Number(event.target.value);
+                      setArchitecturalSegments((current) => current.map((segment) => (
+                        segment.id === selectedArchitecturalElement.id ? { ...segment, thicknessMm } : segment
+                      )));
+                    }}
+                  >
+                    {[100, 125, 150, 200, 250, 300].map((thickness) => (
+                      <option value={thickness} key={thickness}>{thickness} mm</option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {['wall', 'door', 'window'].includes(architecturalTool) && !pendingArchitectPoint && (
                 <p className="architect-tool-hint">Drag once to draw; the tool returns to Select when you release.</p>
               )}
@@ -2619,13 +2640,16 @@ export default function RoomEditor() {
                     const startY = displayedSegment.startY * 43 + 1;
                     const endX = displayedSegment.endX * 43 + 1;
                     const endY = displayedSegment.endY * 43 + 1;
+                    const segmentWallStrokeWidth = Math.max(2.5, Math.min(14, averageCellMm
+                      ? ((displayedSegment.thicknessMm || wallThicknessMm) * 43) / averageCellMm
+                      : (displayedSegment.thicknessMm || wallThicknessMm) / 35));
                     const segmentLength = Math.hypot(endX - startX, endY - startY);
                     const isHorizontal = startY === endY;
                     const swingX = isHorizontal ? startX : startX + segmentLength;
                     const swingY = isHorizontal ? startY + segmentLength : startY;
                     const swingPath = `M ${endX} ${endY} A ${segmentLength} ${segmentLength} 0 0 1 ${swingX} ${swingY}`;
                     const doorLeaf = `M ${startX} ${startY} L ${swingX} ${swingY}`;
-                    const windowOffset = wallStrokeWidth * 0.62;
+                    const windowOffset = segmentWallStrokeWidth * 0.62;
                     return (
                       <g
                         key={segment.id}
@@ -2649,21 +2673,21 @@ export default function RoomEditor() {
                           x2={endX}
                           y2={endY}
                           stroke="rgba(0, 0, 0, 0.001)"
-                          strokeWidth={Math.max(16, wallStrokeWidth + 8)}
+                          strokeWidth={Math.max(16, segmentWallStrokeWidth + 8)}
                           pointerEvents={armedItemId ? 'none' : 'stroke'}
                         />
                         {segment.type === 'wall' && (
-                          <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={isSelected ? 'var(--accent)' : '#202722'} strokeWidth={wallStrokeWidth} strokeLinecap="square" />
+                          <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={isSelected ? 'var(--accent)' : '#202722'} strokeWidth={segmentWallStrokeWidth} strokeLinecap="square" />
                         )}
                         {segment.type === 'door' && (
                           <>
-                            <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={floorColor} strokeWidth={wallStrokeWidth + 2} />
+                            <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={floorColor} strokeWidth={segmentWallStrokeWidth + 2} />
                             <path d={`${swingPath} ${doorLeaf}`} fill="none" stroke={isSelected ? 'var(--accent)' : '#202722'} strokeWidth="1.7" />
                           </>
                         )}
                         {segment.type === 'window' && (
                           <>
-                            <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={floorColor} strokeWidth={wallStrokeWidth + 2} />
+                            <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={floorColor} strokeWidth={segmentWallStrokeWidth + 2} />
                             <line
                               x1={startX + (isHorizontal ? 0 : -windowOffset)}
                               y1={startY + (isHorizontal ? -windowOffset : 0)}
@@ -2682,7 +2706,7 @@ export default function RoomEditor() {
                             />
                           </>
                         )}
-                        {isSelected && segment.type === 'wall' && (
+                        {isSelected && (
                           <>
                             <circle
                               cx={startX}
@@ -2695,10 +2719,10 @@ export default function RoomEditor() {
                               style={{ cursor: 'grab', touchAction: 'none' }}
                               role="button"
                               tabIndex={0}
-                              aria-label="Drag to extend or shorten the start of the wall"
+                              aria-label={`Drag to extend or shorten the start of the ${segment.type}`}
                               onPointerDown={(event) => beginArchitecturalEndpointDrag(event, segment, 'start')}
                               onClick={(event) => event.stopPropagation()}
-                            ><title>Drag to extend or shorten wall</title></circle>
+                            ><title>{`Drag to extend or shorten ${segment.type}`}</title></circle>
                             <circle
                               cx={endX}
                               cy={endY}
@@ -2710,10 +2734,10 @@ export default function RoomEditor() {
                               style={{ cursor: 'grab', touchAction: 'none' }}
                               role="button"
                               tabIndex={0}
-                              aria-label="Drag to extend or shorten the end of the wall"
+                              aria-label={`Drag to extend or shorten the end of the ${segment.type}`}
                               onPointerDown={(event) => beginArchitecturalEndpointDrag(event, segment, 'end')}
                               onClick={(event) => event.stopPropagation()}
-                            ><title>Drag to extend or shorten wall</title></circle>
+                            ><title>{`Drag to extend or shorten ${segment.type}`}</title></circle>
                           </>
                         )}
                       </g>
@@ -3197,7 +3221,7 @@ export default function RoomEditor() {
                     const startY = segment.startY * 25 + 1;
                     const endX = segment.endX * 25 + 1;
                     const endY = segment.endY * 25 + 1;
-                    const thickness = Math.max(2, Math.min(7, (versionPreview.snapshot.wallThicknessMm || 150) / 45));
+                    const thickness = Math.max(2, Math.min(7, (segment.thicknessMm || versionPreview.snapshot.wallThicknessMm || 150) / 45));
                     const isHorizontal = startY === endY;
                     const segmentLength = Math.hypot(endX - startX, endY - startY);
                     const swingX = isHorizontal ? startX : startX + segmentLength;
