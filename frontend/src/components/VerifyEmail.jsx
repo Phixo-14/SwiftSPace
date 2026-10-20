@@ -72,6 +72,7 @@ export default function VerifyEmail() {
     localStorage.removeItem('firebase_pending_username');
     localStorage.removeItem('firebase_pending_email');
     localStorage.removeItem('firebase_pending_role');
+    localStorage.removeItem('firebase_pending_terms_accepted');
   }
 
   async function finishFirebaseVerification() {
@@ -112,10 +113,6 @@ export default function VerifyEmail() {
         });
       }
       clearPendingFirebaseProfile();
-      navigate('/register', {
-        replace: true,
-        state: { verificationApproved: true, ...profile },
-      });
     } catch (requestError) {
       if (requestError.code === 'auth/invalid-action-code'
         && await confirmExistingFirebaseVerification(firebaseAuth.currentUser)) {
@@ -173,15 +170,12 @@ export default function VerifyEmail() {
     }
     try {
       const { data } = await api.post('/auth/verify-email', { email, code });
-      navigate('/register', {
-        replace: true,
-        state: {
-          verificationApproved: true,
-          email: data.user.email,
-          username: data.user.username,
-          role: data.user.role,
-        },
+      setVerifiedProfile({
+        email: data.user.email,
+        username: data.user.username,
+        role: data.user.role,
       });
+      setMessage('Your email has been successfully verified. You can now sign in.');
     } catch (requestError) {
       const details = requestError.response?.data?.details;
       setError(details ? details.join(' ') : requestError.response?.data?.message || 'Could not verify email.');
@@ -221,15 +215,12 @@ export default function VerifyEmail() {
           <button
             type="button"
             className="btn-primary verification-signin"
-            onClick={() => navigate('/register', {
-              replace: true,
-              state: { verificationApproved: true, ...verifiedProfile },
-            })}
+            onClick={() => navigate(`/login?email=${encodeURIComponent(verifiedProfile.email)}`, { replace: true })}
           >
-            Continue to sign up
+            Sign in
           </button>
         )}
-        {!firebaseMode && !firebaseLinkHandled && <form onSubmit={handleSubmit} noValidate>
+        {!firebaseMode && !firebaseLinkHandled && !verifiedProfile && <form onSubmit={handleSubmit} noValidate>
           <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
           <label>Verification code<input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} required /></label>
           <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Verifying…' : 'Verify email'}</button>
@@ -237,7 +228,7 @@ export default function VerifyEmail() {
         {error && <p className="form-error" role="alert">{error}</p>}
         {message && !verifiedProfile && <p className="form-success" role="status">{message}</p>}
         {!firebaseLinkHandled && !verifiedProfile && (firebaseMode
-          ? <button type="button" className="btn-link verification-signin" onClick={() => navigate('/register')}>Back to sign up</button>
+          ? <button type="button" className="btn-link verification-signin" onClick={() => navigate(`/login?email=${encodeURIComponent(email)}`, { replace: true })}>Back to sign in</button>
           : <button type="button" className="btn-link" onClick={resendCode}>Resend code</button>)}
       </div>
     </div>
