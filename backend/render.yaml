@@ -26,13 +26,9 @@ services:
         sync: false
       - key: FIREBASE_PRIVATE_KEY
         sync: false
+      - key: INITIAL_ADMIN_SETUP_TOKEN
+        sync: false
       - key: AUTH_DELETE_WEBHOOK_SECRET
-        sync: false
-      - key: ADMIN_USERNAME
-        sync: false
-      - key: ADMIN_EMAIL
-        sync: false
-      - key: ADMIN_PASSWORD
         sync: false
   - type: web
     name: swiftspace-web

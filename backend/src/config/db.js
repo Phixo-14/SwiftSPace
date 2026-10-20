@@ -37,7 +37,21 @@ async function connectDB() {
 
   await migrateLegacyCollections();
   await ensureCollections();
+  await removeUniqueUsernameIndex();
   console.log(`MongoDB connected -> ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+
+async function removeUniqueUsernameIndex() {
+  const indexes = await User.collection.indexes();
+  const uniqueUsernameIndexes = indexes.filter((index) => (
+    index.unique === true
+    && index.key?.username === 1
+    && Object.keys(index.key).length === 1
+  ));
+  for (const index of uniqueUsernameIndexes) {
+    await User.collection.dropIndex(index.name);
+    console.log(`Removed unique username index: ${index.name}`);
+  }
 }
 
 async function migrateLegacyCollections() {

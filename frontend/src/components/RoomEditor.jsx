@@ -718,7 +718,7 @@ export default function RoomEditor() {
         && floorCellSet.has(`${cellX},${cellY}`);
     });
 
-    const canPlace = Boolean(position) && fitsOnFloor && !doorOverlap && !overlapsOtherFurniture;
+    const canPlace = Boolean(position) && fitsOnFloor && !doorOverlap;
 
     const bounds = getFurnitureBounds(candidate, activeItem.rotation, catalogItem);
     return {
@@ -726,6 +726,7 @@ export default function RoomEditor() {
       catalogItem,
       bounds,
       occupiedCells,
+      overlapsOtherFurniture,
       canPlace,
       reason: doorOverlap
         ? 'Furniture overlaps a door opening.'
@@ -746,7 +747,11 @@ export default function RoomEditor() {
     );
   }, [previewItem, hoverCell]);
 
-  const hoverError = previewItem && !previewItem.canPlace ? previewItem.reason : '';
+  const hoverError = previewItem && !previewItem.canPlace
+    ? previewItem.reason
+    : previewItem?.overlapsOtherFurniture
+      ? 'Furniture overlaps another item.'
+      : '';
 
   function recordOverlap(item, gridX, gridY, reason) {
     setOverlapRecords((records) => [
@@ -828,19 +833,21 @@ export default function RoomEditor() {
     const overlapsOtherFurniture = furnitureOverlaps(candidate);
     const doorOverlap = furnitureTouchesDoor(candidate);
 
-    if (!fitsOnFloor || overlapsOtherFurniture || doorOverlap) {
+    if (!fitsOnFloor || doorOverlap) {
       const reason = doorOverlap
         ? 'Furniture overlaps a door opening.'
-        : overlapsOtherFurniture
-          ? 'Furniture overlap: this placement conflicts with another item.'
-          : 'Furniture must fit fully on the room floor.';
-      if (doorOverlap || overlapsOtherFurniture) {
+        : 'Furniture must fit fully on the room floor.';
+      if (doorOverlap) {
         recordOverlap(candidate, candidate.gridX, candidate.gridY, reason);
         setStatus('Overlap recorded. ' + reason);
       } else {
         setStatus(reason);
       }
       return false;
+    }
+
+    if (overlapsOtherFurniture) {
+      recordOverlap(candidate, candidate.gridX, candidate.gridY, 'Furniture overlaps another item.');
     }
 
     setPlacedItems((current) => [
@@ -850,7 +857,7 @@ export default function RoomEditor() {
     setSelectedKey(`${Math.floor(candidate.gridX)},${Math.floor(candidate.gridY)}`);
     setSelectedArchitecturalElement(null);
     setArmedItemId(null);
-    setStatus('');
+    setStatus(overlapsOtherFurniture ? 'Furniture placed with overlap warning.' : '');
     return true;
   }
 
@@ -871,7 +878,7 @@ export default function RoomEditor() {
           return cellX < dimensions.width && cellY < dimensions.length
             && floorCellSet.has(`${cellX},${cellY}`);
         });
-        if (!clear || furnitureOverlaps(candidate) || furnitureTouchesDoor(candidate)) continue;
+        if (!clear || furnitureTouchesDoor(candidate)) continue;
         const bounds = getFurnitureBounds(candidate);
         const centerX = x + bounds.width / 2;
         const centerY = y + bounds.length / 2;
@@ -903,9 +910,14 @@ export default function RoomEditor() {
       setSelectedArchitecturalElement(null);
 
       if (!floorCellSet.has(key)) return;
-      if (existing) {
+      if (existing && !armedItemId) {
         setSelectedKey(key);
         setArmedItemId(null);
+        return;
+      }
+
+      if (!armedItemId) {
+        setSelectedKey(null);
         return;
       }
 
@@ -941,13 +953,11 @@ export default function RoomEditor() {
     const doorOverlap = furnitureTouchesDoor(rotatedCandidate);
     const overlapsOtherFurniture = furnitureOverlaps(rotatedCandidate, [selectedItem]);
 
-    if (!fitsOnFloor || overlapsOtherFurniture || doorOverlap) {
+    if (!fitsOnFloor || doorOverlap) {
       const reason = doorOverlap
         ? 'Furniture overlaps a door opening.'
-        : overlapsOtherFurniture
-          ? 'That rotation would overlap another item.'
-          : 'Furniture must fit fully on the room floor.';
-      if (doorOverlap || overlapsOtherFurniture) {
+        : 'Furniture must fit fully on the room floor.';
+      if (doorOverlap) {
         recordOverlap({ ...selectedItem, rotation: nextRotation }, selectedItem.gridX, selectedItem.gridY, reason);
         setStatus('Overlap recorded. ' + reason);
       } else {
@@ -956,14 +966,18 @@ export default function RoomEditor() {
       return;
     }
 
+    if (overlapsOtherFurniture) {
+      recordOverlap({ ...selectedItem, rotation: nextRotation }, selectedItem.gridX, selectedItem.gridY, 'Furniture overlaps another item.');
+    }
+
     setPlacedItems((prev) =>
       prev.map((item) =>
-        item.gridX === selectedItem.gridX && item.gridY === selectedItem.gridY
+        item.placementId === selectedItem.placementId
           ? { ...item, rotation: nextRotation }
           : item
       )
     );
-    setStatus('');
+    setStatus(overlapsOtherFurniture ? 'Furniture rotated with overlap warning.' : '');
   }
 
   function rotateSelectedClockwise() {
@@ -993,13 +1007,11 @@ export default function RoomEditor() {
     const overlapsOtherFurniture = furnitureOverlaps(candidate, [itemToRotate]);
     const doorOverlap = furnitureTouchesDoor(candidate);
 
-    if (!fitsOnFloor || overlapsOtherFurniture || doorOverlap) {
+    if (!fitsOnFloor || doorOverlap) {
       const reason = doorOverlap
         ? 'Furniture overlaps a door opening.'
-        : overlapsOtherFurniture
-          ? 'That rotation would overlap another item.'
-          : 'Furniture must fit fully on the room floor.';
-      if (doorOverlap || overlapsOtherFurniture) {
+        : 'Furniture must fit fully on the room floor.';
+      if (doorOverlap) {
         recordOverlap(candidate, itemToRotate.gridX, itemToRotate.gridY, reason);
         setStatus('Overlap recorded. ' + reason);
       } else {
@@ -1008,9 +1020,13 @@ export default function RoomEditor() {
       return;
     }
 
+    if (overlapsOtherFurniture) {
+      recordOverlap(candidate, itemToRotate.gridX, itemToRotate.gridY, 'Furniture overlaps another item.');
+    }
+
     setPlacedItems((current) => current.map((item) => item === itemToRotate ? { ...item, rotation: nextRotation } : item));
     setSelectedKey(`${Math.floor(itemToRotate.gridX)},${Math.floor(itemToRotate.gridY)}`);
-    setStatus('');
+    setStatus(overlapsOtherFurniture ? 'Furniture rotated with overlap warning.' : '');
   }
 
   function commitRotationDraft(nextRotation = rotationDraft) {
@@ -1037,13 +1053,11 @@ export default function RoomEditor() {
     const overlapsOtherFurniture = furnitureOverlaps(candidate, [itemToMove]);
     const doorOverlap = furnitureTouchesDoor(candidate);
 
-    if (!fitsOnFloor || overlapsOtherFurniture || doorOverlap) {
+    if (!fitsOnFloor || doorOverlap) {
       const reason = doorOverlap
         ? 'Furniture overlaps a door opening.'
-        : overlapsOtherFurniture
-          ? 'That furniture footprint overlaps another item.'
-          : 'Furniture must fit fully on the room floor.';
-      if (doorOverlap || overlapsOtherFurniture) {
+        : 'Furniture must fit fully on the room floor.';
+      if (doorOverlap) {
         recordOverlap(candidate, candidate.gridX, candidate.gridY, reason);
         setStatus('Overlap recorded. ' + reason);
       } else {
@@ -1052,11 +1066,15 @@ export default function RoomEditor() {
       return;
     }
 
+    if (overlapsOtherFurniture) {
+      recordOverlap(candidate, candidate.gridX, candidate.gridY, 'Furniture overlaps another item.');
+    }
+
     setPlacedItems((prev) =>
       prev.map((item) => (item === itemToMove ? { ...item, ...position } : item))
     );
     setSelectedKey(`${Math.floor(position.gridX)},${Math.floor(position.gridY)}`);
-    setStatus('');
+    setStatus(overlapsOtherFurniture ? 'Furniture moved with overlap warning.' : '');
   }
 
   function resizeFurniture(
@@ -1076,19 +1094,19 @@ export default function RoomEditor() {
     const overlapsFurniture = furnitureOverlaps(candidate, [itemToResize]);
     const doorOverlap = furnitureTouchesDoor(candidate);
 
-    if (!fitsInRoom || overlapsFurniture || doorOverlap) {
+    if (!fitsInRoom || doorOverlap) {
       setStatus(doorOverlap
         ? 'Furniture overlaps a door opening.'
-        : !fitsInRoom
-          ? 'Furniture must fit fully on the room floor.'
-          : 'Furniture overlaps another item.');
+        : 'Furniture must fit fully on the room floor.');
       if (!fitsInRoom) return false;
-      if (doorOverlap || overlapsFurniture) {
-        recordOverlap(candidate, candidate.gridX, candidate.gridY, doorOverlap
-          ? 'Furniture overlaps a door opening.'
-          : 'Furniture overlaps another item.');
+      if (doorOverlap) {
+        recordOverlap(candidate, candidate.gridX, candidate.gridY, 'Furniture overlaps a door opening.');
       }
       return false;
+    }
+
+    if (overlapsFurniture) {
+      recordOverlap(candidate, candidate.gridX, candidate.gridY, 'Furniture overlaps another item.');
     }
 
     setPlacedItems((current) => current.map((item) =>
@@ -1097,7 +1115,7 @@ export default function RoomEditor() {
         : item
     ));
     setSelectedKey(`${Math.floor(candidate.gridX)},${Math.floor(candidate.gridY)}`);
-    setStatus('');
+    setStatus(overlapsFurniture ? 'Furniture resized with overlap warning.' : '');
     return true;
   }
 
@@ -1224,6 +1242,7 @@ export default function RoomEditor() {
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('application/json', JSON.stringify({
       kind: 'move',
+      placementId: item.placementId,
       gridX: item.gridX,
       gridY: item.gridY,
       catalogItemId: item.catalogItemId,
@@ -1259,20 +1278,26 @@ export default function RoomEditor() {
 
   function handleCellDrop(event, gridX, gridY) {
     event.preventDefault();
+    const svg = canvasWrapRef.current?.querySelector('.room-boundary-overlay');
+    const point = getArchitecturalPoint(svg, event.clientX, event.clientY);
+    const dropX = point ? Math.floor(point.x) : gridX;
+    const dropY = point ? Math.floor(point.y) : gridY;
     const data = event.dataTransfer.getData('application/json');
     if (!data) return;
     const dragged = JSON.parse(data);
     if (dragged.kind === 'catalog') {
-      placeCatalogItemAt(dragged.catalogItemId, gridX, gridY, dragged.rotation || 0);
+      placeCatalogItemAt(dragged.catalogItemId, dropX, dropY, dragged.rotation || 0);
       setDraggedItem(null);
       return;
     }
-    const item = placedItems.find((candidate) =>
-      candidate.gridX === dragged.gridX
-      && candidate.gridY === dragged.gridY
-      && candidate.catalogItemId === dragged.catalogItemId
-    );
-    if (item) moveItem(item, gridX, gridY);
+    const item = dragged.placementId
+      ? placedItems.find((candidate) => candidate.placementId === dragged.placementId)
+      : placedItems.find((candidate) =>
+        candidate.gridX === dragged.gridX
+        && candidate.gridY === dragged.gridY
+        && candidate.catalogItemId === dragged.catalogItemId
+      );
+    if (item) moveItem(item, dropX, dropY);
     setDraggedItem(null);
   }
 
@@ -2789,7 +2814,7 @@ export default function RoomEditor() {
                 return (
                   <div
                     className={`placed-item ${isSelected ? 'selected' : ''}`}
-                    key={`${item.gridX},${item.gridY}-${item.catalogItemId}`}
+                    key={item.placementId || `${item.gridX},${item.gridY}-${item.catalogItemId}`}
                     role="button"
                     tabIndex={0}
                     draggable
@@ -2802,14 +2827,45 @@ export default function RoomEditor() {
                       width: `${bounds.width * 43 - 1}px`,
                       height: `${bounds.length * 43 - 1}px`,
                     }}
-                    onClick={() => {
+                    onClick={(event) => {
+                      if (armedItemId) {
+                        const svg = canvasWrapRef.current?.querySelector('.room-boundary-overlay');
+                        const point = getArchitecturalPoint(svg, event.clientX, event.clientY);
+                        if (point) {
+                          placeArmedItemAtNearestFloor(point);
+                        } else {
+                          placeCatalogItemAt(armedItemId, Math.floor(displayItem.gridX), Math.floor(displayItem.gridY));
+                        }
+                        return;
+                      }
                       setSelectedKey(`${Math.floor(item.gridX)},${Math.floor(item.gridY)}`);
                       setSelectedArchitecturalElement(null);
                       setArmedItemId(null);
                     }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      const svg = canvasWrapRef.current?.querySelector('.room-boundary-overlay');
+                      const point = getArchitecturalPoint(svg, event.clientX, event.clientY);
+                      setHoverCell(point
+                        ? { x: Math.floor(point.x), y: Math.floor(point.y) }
+                        : { x: Math.floor(displayItem.gridX), y: Math.floor(displayItem.gridY) });
+                    }}
+                    onDrop={(event) => handleCellDrop(
+                      event,
+                      Math.floor(displayItem.gridX),
+                      Math.floor(displayItem.gridY)
+                    )}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
+                        if (armedItemId) {
+                          placeCatalogItemAt(
+                            armedItemId,
+                            Math.floor(displayItem.gridX),
+                            Math.floor(displayItem.gridY)
+                          );
+                          return;
+                        }
                         setSelectedKey(`${Math.floor(item.gridX)},${Math.floor(item.gridY)}`);
                         setSelectedArchitecturalElement(null);
                         setArmedItemId(null);

@@ -5,9 +5,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
-const bcrypt = require('bcryptjs');
 const connectDB = require('./src/config/db');
-const User = require('./src/models/User');
 const { syncFirebaseUsersFromFirebase } = require('./src/controllers/authController');
 const getFirebaseAdmin = require('./src/config/firebaseAdmin');
 const { ensureCatalog } = require('./src/seed/seedCatalog');
@@ -85,48 +83,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Something went wrong on the server.' });
 });
 
-async function ensureAdminAccount() {
-  if (process.env.BOOTSTRAP_ADMIN?.toLowerCase() === 'false') {
-    console.log('Admin account bootstrap disabled.');
-    return;
-  }
-
-  const adminUsername = process.env.ADMIN_USERNAME;
-  const adminEmail = process.env.ADMIN_EMAIL;
-  const adminPassword = process.env.ADMIN_PASSWORD;
-
-  if (!adminUsername || !adminEmail || !adminPassword || adminPassword.length < 8) {
-    throw new Error('ADMIN_USERNAME, ADMIN_EMAIL, and ADMIN_PASSWORD must be configured.');
-  }
-
-  const existing = await User.findOne({ $or: [{ email: adminEmail }, { username: adminUsername }] });
-
-  if (existing) {
-    const passwordMatches = await bcrypt.compare(adminPassword, existing.passwordHash || '');
-    existing.role = 'admin';
-    existing.emailVerified = true;
-    if (!passwordMatches) existing.passwordHash = await bcrypt.hash(adminPassword, 10);
-    await existing.save();
-    return;
-  }
-
-  const passwordHash = await bcrypt.hash(adminPassword, 10);
-  await User.create({
-    username: adminUsername,
-    email: adminEmail,
-    passwordHash,
-    role: 'admin',
-    emailVerified: true,
-  });
-
-  console.log(`Admin account ready for ${adminUsername}.`);
-}
-
 const PORT = process.env.PORT || 5000;
 
 connectDB()
   .then(async () => {
-    await ensureAdminAccount();
     await ensureCatalog();
     app.listen(PORT, () => {
       console.log(`Room Designer API listening on port ${PORT}`);

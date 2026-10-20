@@ -128,7 +128,6 @@ async function assertItemsFitAndExist(dimensions, placedItems, architecturalSegm
   const ids = [...new Set(placedItems.map((i) => i.catalogItemId))];
   const found = await CatalogItem.find({ _id: { $in: ids } }).select('_id footprint');
   const catalogById = new Map(found.map((item) => [item._id.toString(), item]));
-  const placedBounds = [];
   const doors = architecturalSegments.filter((segment) => segment.type === 'door');
   const epsilon = 1e-9;
 
@@ -155,14 +154,6 @@ async function assertItemsFitAndExist(dimensions, placedItems, architecturalSegm
       || bounds.right > dimensions.width + epsilon || bounds.bottom > dimensions.length + epsilon) {
       return `Item at (${item.gridX}, ${item.gridY}) falls outside a ${dimensions.width}x${dimensions.length} room.`;
     }
-    if (placedBounds.some((other) => (
-      bounds.left < other.right - epsilon && bounds.right > other.left + epsilon
-      && bounds.top < other.bottom - epsilon && bounds.bottom > other.top + epsilon
-    ))) {
-      return `Furniture footprints overlap at (${item.gridX}, ${item.gridY}).`;
-    }
-    placedBounds.push(bounds);
-
     const minCellX = Math.floor(bounds.left);
     const minCellY = Math.floor(bounds.top);
     const maxCellX = Math.ceil(bounds.right - epsilon);

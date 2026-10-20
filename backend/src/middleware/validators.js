@@ -5,9 +5,9 @@ const crypto = require('crypto');
 // `schema.validate(req.body)` directly so this stays framework-agnostic.
 
 const registerSchema = Joi.object({
-  username: Joi.string().trim().min(3).max(30).pattern(/^[A-Za-z]+(?: [A-Za-z]+)+$/).required(),
+  username: Joi.string().trim().min(3).max(50).pattern(/^\p{L}+(?: \p{L}+)+$/u).required(),
   email: Joi.string().email({ tlds: false }).required(),
-  password: Joi.string().min(12).max(72)
+  password: Joi.string().min(8).max(16)
     .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/)
     .required(),
   role: Joi.string().valid('homeowner', 'interior-designer').default('homeowner'),
@@ -45,10 +45,20 @@ const roomFolderSchema = Joi.object({
 
 const firebaseSyncSchema = Joi.object({
   idToken: Joi.string().required(),
-  username: Joi.string().trim().min(3).max(30).pattern(/^[A-Za-z]+(?: [A-Za-z]+)+$/).required(),
+  username: Joi.string().trim().min(3).max(50).pattern(/^\p{L}+(?: \p{L}+)+$/u).required(),
   role: Joi.string().valid('homeowner', 'interior-designer'),
   termsAccepted: Joi.boolean(),
 });
+
+const initialAdminSetupSchema = Joi.object({
+  setupToken: Joi.string().min(32).required(),
+  username: Joi.string().trim().min(3).max(50).pattern(/^\p{L}+(?: \p{L}+)+$/u).required(),
+  email: Joi.string().email({ tlds: false }).required(),
+  password: Joi.string().min(8).max(16)
+    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/),
+  idToken: Joi.string(),
+  termsAccepted: Joi.boolean().valid(true).required(),
+}).xor('password', 'idToken');
 
 const firebaseDeleteSchema = Joi.object({
   uid: Joi.string().trim().min(1).max(128).required(),
@@ -163,4 +173,4 @@ function validateBody(schema) {
   };
 }
 
-module.exports = { registerSchema, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, projectFolderSchema, roomFolderSchema, firebaseSyncSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, userRoleSchema, roomSchema, roomVersionSchema, validateBody };
+module.exports = { registerSchema, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, projectFolderSchema, roomFolderSchema, firebaseSyncSchema, initialAdminSetupSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, userRoleSchema, roomSchema, roomVersionSchema, validateBody };

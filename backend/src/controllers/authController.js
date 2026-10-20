@@ -13,6 +13,8 @@ const RoomTimer = require('../models/RoomTimer');
 const PlacementError = require('../models/PlacementError');
 const getFirebaseAdmin = require('../config/firebaseAdmin');
 
+const INITIAL_ADMIN_SETUP_ID = 'initial-admin-setup';
+
 const mailTransport = process.env.SMTP_HOST
   ? nodemailer.createTransport({
     host: process.env.SMTP_HOST,
@@ -34,8 +36,146 @@ function normalizeUsername(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
+async function getInitialAdminSetup() {
+  return User.db.collection('systemsettings').findOne({ _id: INITIAL_ADMIN_SETUP_ID });
+}
+
+async function registrationIsOpen() {
+  const setup = await getInitialAdminSetup();
+  return setup?.status === 'complete';
+}
+
+function hasValidInitialAdminToken(token) {
+  const expected = process.env.INITIAL_ADMIN_SETUP_TOKEN || '';
+  const provided = String(token || '');
+  if (expected.length < 32 || provided.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+}
+
+async function getFirebaseIdentity(idToken) {
+  const firebase = getFirebaseAdmin();
+  if (firebase) return firebase.auth().verifyIdToken(idToken);
+  if (!process.env.FIREBASE_WEB_API_KEY) throw new Error('Firebase server configuration is missing.');
+
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(process.env.FIREBASE_WEB_API_KEY)}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) }
+  );
+  const result = await response.json();
+  const account = result.users?.[0];
+  if (!response.ok || !account) throw new Error('Invalid Firebase authentication token.');
+  return { uid: account.localId, email: account.email, email_verified: account.emailVerified };
+}
+
+async function registrationStatus(req, res) {
+  const complete = await registrationIsOpen();
+  res.json({ registrationOpen: complete, adminSetupAvailable: !complete });
+}
+
+async function setupInitialAdmin(req, res) {
+  if (!hasValidInitialAdminToken(req.body.setupToken)) {
+    return res.status(403).json({ message: 'This administrator setup link is invalid or has already been used.' });
+  }
+
+  const { username, email, password, idToken, termsAccepted } = req.body;
+  if (termsAccepted !== true) {
+    return res.status(400).json({ message: 'You must accept the Terms of Service and Privacy Policy to create an account.' });
+  }
+
+  let identity;
+  if (idToken) {
+    try {
+      identity = await getFirebaseIdentity(idToken);
+    } catch {
+      return res.status(401).json({ message: 'Invalid Firebase authentication token.' });
+    }
+    if (sanitizeEmail(email) !== sanitizeEmail(identity.email)) {
+      return res.status(400).json({ message: 'The verified Firebase account email does not match the submitted email.' });
+    }
+  } else if (!strongPassword(password)) {
+    return res.status(400).json({ message: 'Password must be 8–16 characters and include upper/lowercase letters, a number, and a symbol.' });
+  }
+
+  const cleanEmail = sanitizeEmail(identity?.email || email);
+  const cleanUsername = normalizeUsername(username);
+  if (!cleanEmail || !cleanUsername) return res.status(400).json({ message: 'Name and email are required.' });
+
+  const settings = User.db.collection('systemsettings');
+  const existingSetup = await settings.findOne({ _id: INITIAL_ADMIN_SETUP_ID });
+  if (existingSetup?.status === 'complete') {
+    return res.status(409).json({ message: 'The one-time administrator setup has already been completed.' });
+  }
+
+  const existingUser = await User.findOne({ email: cleanEmail });
+  if (existingUser) {
+    if (existingUser.role === 'admin' && (!identity || existingUser.firebaseUid === identity.uid)) {
+      await settings.updateOne(
+        { _id: INITIAL_ADMIN_SETUP_ID },
+        { $set: { status: 'complete', email: cleanEmail, uid: identity?.uid || null, completedAt: new Date() } },
+        { upsert: true }
+      );
+      return res.json({ message: 'Administrator setup is complete.', email: cleanEmail });
+    }
+    return res.status(409).json({ message: 'An account already uses this email. Enter a different client email.' });
+  }
+
+  const claim = await settings.updateOne(
+    { _id: INITIAL_ADMIN_SETUP_ID },
+    { $setOnInsert: { status: 'setting-up', email: cleanEmail, uid: identity?.uid || null, startedAt: new Date() } },
+    { upsert: true }
+  );
+  const setupState = claim.upsertedCount === 1
+    ? null
+    : await settings.findOne({ _id: INITIAL_ADMIN_SETUP_ID });
+  if (setupState) {
+    return res.status(409).json({ message: 'The one-time administrator setup has already been claimed.' });
+  }
+
+  let user;
+  try {
+    const code = identity ? null : createVerificationCode();
+    user = await User.create({
+      username: cleanUsername,
+      email: cleanEmail,
+      firebaseUid: identity?.uid || null,
+      passwordHash: identity ? crypto.randomBytes(32).toString('hex') : await bcrypt.hash(password, 10),
+      role: 'admin',
+      emailVerified: Boolean(identity?.email_verified),
+      termsAcceptedAt: new Date(),
+      emailVerificationCodeHash: code ? hashVerificationCode(code) : null,
+      emailVerificationExpiresAt: code ? new Date(Date.now() + 10 * 60 * 1000) : null,
+      passwordChangedAt: new Date(),
+    });
+
+    await settings.updateOne(
+      { _id: INITIAL_ADMIN_SETUP_ID, email: cleanEmail },
+      { $set: { status: 'complete', completedAt: new Date() } }
+    );
+
+    if (!identity) {
+      const delivered = await sendVerificationCode(user, code);
+      return res.status(201).json({
+        message: delivered ? 'Verification code sent.' : 'Email could not be delivered. Check the backend terminal for the verification code.',
+        email: user.email,
+        ...(process.env.NODE_ENV !== 'production' ? { developmentCode: code } : {}),
+      });
+    }
+    return res.status(201).json({ message: 'Admin account created. Verify your email to sign in.', email: user.email });
+  } catch (error) {
+    if (user) {
+      await settings.updateOne(
+        { _id: INITIAL_ADMIN_SETUP_ID, email: cleanEmail },
+        { $set: { status: 'complete', completedAt: new Date() } }
+      );
+    } else {
+      await settings.deleteOne({ _id: INITIAL_ADMIN_SETUP_ID, status: 'setting-up', email: cleanEmail });
+    }
+    throw error;
+  }
+}
+
 function strongPassword(password) {
-  return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,72}$/.test(password || '');
+  return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,16}$/.test(password || '');
 }
 
 function hashVerificationCode(code) {
@@ -153,18 +293,21 @@ async function issueUserSession(user, req, res) {
 
 // POST /api/auth/register
 async function register(req, res) {
+  if (!(await registrationIsOpen())) {
+    return res.status(403).json({ message: 'The client administrator must complete the one-time setup before registration opens.' });
+  }
   const { username, email, password, role } = req.body;
   const cleanUsername = normalizeUsername(username);
   const cleanEmail = sanitizeEmail(email);
 
   if (!strongPassword(password)) {
-    return res.status(400).json({ message: 'Password must be at least 12 characters and include upper/lowercase letters, a number, and a symbol.' });
+    return res.status(400).json({ message: 'Password must be 8–16 characters and include upper/lowercase letters, a number, and a symbol.' });
   }
 
-  const existing = await User.findOne({ $or: [{ email: cleanEmail }, { username: cleanUsername }] });
+  const existing = await User.findOne({ email: cleanEmail });
   if (existing) {
     if (existing.role === 'admin' || existing.emailVerified) {
-      return res.status(409).json({ message: 'A user with that email or username already exists.' });
+      return res.status(409).json({ message: 'A user with that email already exists.' });
     }
     await existing.deleteOne();
   }
@@ -196,6 +339,9 @@ async function verifyMfaLogin(req, res) {
   const { email, password, code } = req.body;
   const cleanEmail = sanitizeEmail(email);
   try {
+    if (!(await registrationIsOpen())) {
+      return res.status(403).json({ message: 'Administrator setup has not been completed yet.' });
+    }
     const user = await User.findOne({ email: cleanEmail });
     if (!user || !user.mfaEnabled) {
       return res.status(401).json({ message: 'Invalid email or MFA code.' });
@@ -226,6 +372,9 @@ async function login(req, res) {
   const { email, password } = req.body;
   const cleanEmail = sanitizeEmail(email);
   try {
+    if (!(await registrationIsOpen())) {
+      return res.status(403).json({ message: 'Administrator setup has not been completed yet.' });
+    }
     const user = await User.findOne({ email: cleanEmail });
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password.' });
@@ -235,7 +384,7 @@ async function login(req, res) {
       return res.status(423).json({ message: 'This account is temporarily locked because of repeated failed logins.' });
     }
 
-    if (user.role !== 'admin' && !user.emailVerified) {
+    if (!user.emailVerified) {
       return res.status(403).json({ message: 'Please verify your email before signing in.' });
     }
 
@@ -271,6 +420,9 @@ async function adminLogin(req, res) {
   const { email, password } = req.body;
   const cleanEmail = sanitizeEmail(email);
   try {
+    if (!(await registrationIsOpen())) {
+      return res.status(403).json({ message: 'Administrator setup has not been completed yet.' });
+    }
     const user = await User.findOne({ email: cleanEmail, role: 'admin' });
     if (!user) {
       return res.status(401).json({ message: 'Invalid administrator email or password.' });
@@ -329,32 +481,55 @@ async function firebaseSync(req, res) {
   if (!decoded.email || !decoded.email_verified) {
     return res.status(403).json({ message: 'Please verify your email with Firebase first.' });
   }
-
-  let user = await User.findOne({ $or: [{ firebaseUid: decoded.uid }, { email: decoded.email }] });
-  if (!user) {
-    if (req.body.termsAccepted !== true) {
-      return res.status(400).json({ message: 'You must accept the Terms of Service and Privacy Policy to create an account.' });
-    }
-    user = await User.create({
-      username: req.body.username,
-      email: decoded.email,
-      firebaseUid: decoded.uid,
-      passwordHash: crypto.randomBytes(32).toString('hex'),
-      emailVerified: true,
-      role: req.body.role || 'homeowner',
-      termsAcceptedAt: new Date(),
-    });
-  } else {
-    user.firebaseUid = decoded.uid;
-    user.emailVerified = true;
-    if (req.body.termsAccepted === true && !user.termsAcceptedAt) {
-      user.termsAcceptedAt = new Date();
-    }
-    await user.save();
+  if (!(await registrationIsOpen())) {
+    return res.status(403).json({ message: 'The client administrator must complete the one-time setup before registration opens.' });
   }
 
-  const token = signToken(user);
-  res.json({ token, user: { id: user._id, username: user.username, email: user.email, role: user.role } });
+  try {
+    let user = await User.findOne({ $or: [{ firebaseUid: decoded.uid }, { email: decoded.email }] });
+    if (!user) {
+      if (req.body.termsAccepted !== true) {
+        return res.status(400).json({ message: 'You must accept the Terms of Service and Privacy Policy to create an account.' });
+      }
+
+      try {
+        user = await User.create({
+          username: req.body.username.trim().replace(/\s+/g, ' '),
+          email: decoded.email,
+          firebaseUid: decoded.uid,
+          passwordHash: crypto.randomBytes(32).toString('hex'),
+          emailVerified: true,
+          role: req.body.role || 'homeowner',
+          termsAcceptedAt: new Date(),
+        });
+      } catch (createError) {
+        if (createError.code !== 11000 || (!createError.keyPattern?.email && !createError.keyPattern?.firebaseUid)) {
+          throw createError;
+        }
+        user = await User.findOne({ $or: [{ firebaseUid: decoded.uid }, { email: decoded.email }] });
+        if (!user) throw createError;
+        user.firebaseUid = decoded.uid;
+        user.emailVerified = true;
+        if (req.body.termsAccepted === true && !user.termsAcceptedAt) {
+          user.termsAcceptedAt = new Date();
+        }
+        await user.save();
+      }
+    } else {
+      user.firebaseUid = decoded.uid;
+      user.emailVerified = true;
+      if (req.body.termsAccepted === true && !user.termsAcceptedAt) {
+        user.termsAcceptedAt = new Date();
+      }
+      await user.save();
+    }
+
+    const token = signToken(user);
+    return res.json({ token, user: { id: user._id, username: user.username, email: user.email, role: user.role } });
+  } catch (error) {
+    console.error(`Firebase account sync failed for ${decoded.email}:`, error);
+    return res.status(500).json({ message: 'Could not complete account setup. Please try again.' });
+  }
 }
 
 async function startMfaSetup(req, res) {
@@ -539,15 +714,9 @@ async function syncFirebaseUsersFromFirebase() {
         $or: [{ firebaseUid: firebaseUser.uid }, { email: firebaseUser.email.toLowerCase() }],
       });
       if (!user) {
-        const baseUsername = (firebaseUser.displayName || firebaseUser.email.split('@')[0])
+        const username = (firebaseUser.displayName || firebaseUser.email.split('@')[0])
           .replace(/[^a-zA-Z0-9]/g, '')
           .slice(0, 24) || 'user';
-        let username = baseUsername;
-        let suffix = 1;
-        while (await User.exists({ username })) {
-          username = `${baseUsername.slice(0, 30 - String(suffix).length)}${suffix}`;
-          suffix += 1;
-        }
         user = new User({
           username,
           email: firebaseUser.email,
@@ -593,12 +762,12 @@ async function createAdmin(req, res) {
   const cleanEmail = sanitizeEmail(email);
 
   if (!strongPassword(password)) {
-    return res.status(400).json({ message: 'Password must be at least 12 characters and include upper/lowercase letters, a number, and a symbol.' });
+    return res.status(400).json({ message: 'Password must be 8–16 characters and include upper/lowercase letters, a number, and a symbol.' });
   }
 
-  const existing = await User.findOne({ $or: [{ email: cleanEmail }, { username: cleanUsername }] });
+  const existing = await User.findOne({ email: cleanEmail });
   if (existing) {
-    return res.status(409).json({ message: 'A user with that email or username already exists.' });
+    return res.status(409).json({ message: 'A user with that email already exists.' });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
@@ -616,12 +785,12 @@ async function createUser(req, res) {
   const cleanEmail = sanitizeEmail(email);
 
   if (!strongPassword(password)) {
-    return res.status(400).json({ message: 'Password must be at least 12 characters and include upper/lowercase letters, a number, and a symbol.' });
+    return res.status(400).json({ message: 'Password must be 8–16 characters and include upper/lowercase letters, a number, and a symbol.' });
   }
 
-  const existing = await User.findOne({ $or: [{ email: cleanEmail }, { username: cleanUsername }] });
+  const existing = await User.findOne({ email: cleanEmail });
   if (existing) {
-    return res.status(409).json({ message: 'A user with that email or username already exists.' });
+    return res.status(409).json({ message: 'A user with that email already exists.' });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
@@ -777,6 +946,8 @@ async function getAdminOverview(req, res) {
 }
 
 module.exports = {
+  registrationStatus,
+  setupInitialAdmin,
   register,
   login,
   adminLogin,

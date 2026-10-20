@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 import { firebaseAuth, firebaseConfigured } from '../firebase.js';
@@ -7,7 +7,8 @@ import { reload, sendPasswordResetEmail, signInWithEmailAndPassword } from 'fire
 import PasswordInput from './PasswordInput.jsx';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [searchParams] = useSearchParams();
+  const [email, setEmail] = useState(searchParams.get('email') || '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -50,10 +51,15 @@ export default function Login() {
         const username = nameWords.length === 2
           ? nameWords.join(' ')
           : `${nameWords[0] || 'User'} User`;
+        const termsAccepted = localStorage.getItem('firebase_pending_terms_accepted') === 'true'
+          || sessionStorage.getItem('firebase_pending_terms_accepted') === 'true';
         const { data } = await api.post('/auth/firebase-sync', {
           idToken: firebaseToken,
           username,
+          termsAccepted,
         });
+        localStorage.removeItem('firebase_pending_terms_accepted');
+        sessionStorage.removeItem('firebase_pending_terms_accepted');
         localStorage.removeItem('firebase_pending_username');
         localStorage.removeItem('firebase_pending_role');
         sessionStorage.removeItem('firebase_pending_username');

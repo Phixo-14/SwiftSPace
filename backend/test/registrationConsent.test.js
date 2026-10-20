@@ -5,7 +5,7 @@ const { publicRegisterSchema, firebaseSyncSchema } = require('../src/middleware/
 const registration = {
   username: 'Alex Example',
   email: 'alex@example.com',
-  password: 'StrongPassword!123',
+  password: 'StrongPass!1',
 };
 
 test('public registration requires explicit terms consent', () => {
@@ -15,6 +15,37 @@ test('public registration requires explicit terms consent', () => {
     publicRegisterSchema.validate({ ...registration, termsAccepted: true }).error,
     undefined
   );
+});
+
+test('registration names accept letters only and are limited to 50 characters', () => {
+  assert.equal(publicRegisterSchema.validate({
+    ...registration,
+    username: `${'A'.repeat(25)} ${'B'.repeat(24)}`,
+    termsAccepted: true,
+  }).error, undefined);
+  assert.ok(publicRegisterSchema.validate({
+    ...registration,
+    username: `${'A'.repeat(25)} ${'B'.repeat(25)}`,
+    termsAccepted: true,
+  }).error);
+  assert.ok(publicRegisterSchema.validate({
+    ...registration,
+    username: 'Alex 2Example',
+    termsAccepted: true,
+  }).error);
+});
+
+test('registration passwords must be 8 to 16 characters', () => {
+  const validatePassword = (password) => publicRegisterSchema.validate({
+    ...registration,
+    password,
+    termsAccepted: true,
+  }).error;
+
+  assert.equal(validatePassword('Abcdef1!'), undefined);
+  assert.equal(validatePassword('Abcdefghijk1!XYZ'), undefined);
+  assert.ok(validatePassword('Abcde1!'));
+  assert.ok(validatePassword('Abcdefghijk1!XYZQ'));
 });
 
 test('Firebase account creation can carry explicit terms consent', () => {

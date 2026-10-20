@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api.js';
-import { useAuth } from '../AuthContext.jsx';
 import { firebaseAuth, firebaseConfigured } from '../firebase.js';
-import { applyActionCode, reload } from 'firebase/auth';
+import { applyActionCode, onAuthStateChanged, reload } from 'firebase/auth';
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
@@ -11,44 +10,131 @@ export default function VerifyEmail() {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [setupMessage, setSetupMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [firebaseLinkHandled, setFirebaseLinkHandled] = useState(false);
+  const [verifiedProfile, setVerifiedProfile] = useState(null);
   const firebaseMode = firebaseConfigured;
-  const { login } = useAuth();
   const navigate = useNavigate();
+
+  function getPendingValue(key) {
+    return localStorage.getItem(`firebase_pending_${key}`)
+      || sessionStorage.getItem(`firebase_pending_${key}`);
+  }
+
+  async function confirmExistingFirebaseVerification(user) {
+    const requestedEmail = email.trim().toLowerCase();
+    if (!user || (requestedEmail && user.email?.toLowerCase() !== requestedEmail)) return false;
+
+    setLoading(true);
+    setError('');
+    let emailVerified = false;
+    try {
+      await reload(user);
+      if (!user.emailVerified) return false;
+      emailVerified = true;
+
+      const profile = {
+        email: user.email,
+        username: getPendingValue('username') || user.displayName || user.email.split('@')[0],
+        role: getPendingValue('role') || 'homeowner',
+      };
+      setVerifiedProfile(profile);
+      setMessage('Your email has been successfully verified.');
+
+      const firebaseToken = await user.getIdToken(true);
+      await api.post('/auth/firebase-sync', {
+        idToken: firebaseToken,
+        username: profile.username,
+        role: profile.role,
+        termsAccepted: getPendingValue('terms_accepted') === 'true',
+      });
+
+      clearPendingFirebaseProfile();
+      return true;
+    } catch (requestError) {
+      if (emailVerified) {
+        setSetupMessage('SwiftSpace could not finish account setup yet. Please try signing in.');
+      } else {
+        setError(requestError.response?.data?.message || requestError.message || 'Could not confirm email verification.');
+      }
+      return emailVerified;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function clearPendingFirebaseProfile() {
+    sessionStorage.removeItem('firebase_pending_username');
+    sessionStorage.removeItem('firebase_pending_email');
+    sessionStorage.removeItem('firebase_pending_role');
+    sessionStorage.removeItem('firebase_pending_terms_accepted');
+    localStorage.removeItem('firebase_pending_username');
+    localStorage.removeItem('firebase_pending_email');
+    localStorage.removeItem('firebase_pending_role');
+  }
 
   async function finishFirebaseVerification() {
     const actionCode = new URLSearchParams(window.location.search).get('oobCode');
     if (!firebaseConfigured || !actionCode) return false;
     setLoading(true);
     setError('');
+    let emailVerified = false;
     try {
       await applyActionCode(firebaseAuth, actionCode);
+      emailVerified = true;
       setFirebaseLinkHandled(true);
 
+      const profile = {
+        email: email
+          || localStorage.getItem('firebase_pending_email')
+          || sessionStorage.getItem('firebase_pending_email')
+          || firebaseAuth.currentUser?.email
+          || '',
+        username: localStorage.getItem('firebase_pending_username')
+          || sessionStorage.getItem('firebase_pending_username')
+          || email.split('@')[0],
+        role: localStorage.getItem('firebase_pending_role')
+          || sessionStorage.getItem('firebase_pending_role')
+          || 'homeowner',
+      };
+
+      setVerifiedProfile(profile);
+      setMessage('Your email has been successfully verified.');
       if (firebaseAuth.currentUser) {
         await reload(firebaseAuth.currentUser);
         const firebaseToken = await firebaseAuth.currentUser.getIdToken(true);
-        const { data } = await api.post('/auth/firebase-sync', {
+        await api.post('/auth/firebase-sync', {
           idToken: firebaseToken,
-          username: localStorage.getItem('firebase_pending_username')
-            || sessionStorage.getItem('firebase_pending_username')
-            || email.split('@')[0],
-          role: localStorage.getItem('firebase_pending_role')
-            || sessionStorage.getItem('firebase_pending_role'),
-          termsAccepted: sessionStorage.getItem('firebase_pending_terms_accepted') === 'true',
+          username: profile.username,
+          role: profile.role,
+          termsAccepted: getPendingValue('terms_accepted') === 'true',
         });
-        sessionStorage.removeItem('firebase_pending_username');
-        sessionStorage.removeItem('firebase_pending_role');
-        sessionStorage.removeItem('firebase_pending_terms_accepted');
-        localStorage.removeItem('firebase_pending_username');
-        localStorage.removeItem('firebase_pending_role');
-        login(data.token, data.user);
-        navigate('/');
-      } else {
-        setMessage('Email verified. Sign in to finish setting up your account.');
       }
+      clearPendingFirebaseProfile();
+      navigate('/register', {
+        replace: true,
+        state: { verificationApproved: true, ...profile },
+      });
     } catch (requestError) {
+      if (requestError.code === 'auth/invalid-action-code'
+        && await confirmExistingFirebaseVerification(firebaseAuth.currentUser)) {
+        return true;
+      }
+      if (emailVerified) {
+        setFirebaseLinkHandled(true);
+        setVerifiedProfile((profile) => profile || {
+          email: email
+            || getPendingValue('email')
+            || firebaseAuth.currentUser?.email
+            || '',
+          username: getPendingValue('username') || email.split('@')[0],
+          role: getPendingValue('role') || 'homeowner',
+        });
+        setMessage('Your email has been successfully verified.');
+        setSetupMessage('SwiftSpace could not finish account setup yet. Please try signing in.');
+        return true;
+      }
       setError(requestError.code === 'auth/invalid-action-code'
         ? 'This verification link is invalid or has already been used.'
         : requestError.code === 'auth/unauthorized-continue-uri'
@@ -61,7 +147,13 @@ export default function VerifyEmail() {
   }
 
   useEffect(() => {
-    finishFirebaseVerification();
+    let unsubscribe;
+    finishFirebaseVerification().then((handled) => {
+      if (!handled && firebaseConfigured) {
+        unsubscribe = onAuthStateChanged(firebaseAuth, confirmExistingFirebaseVerification);
+      }
+    });
+    return () => unsubscribe?.();
   }, []);
 
   async function handleSubmit(event) {
@@ -81,8 +173,15 @@ export default function VerifyEmail() {
     }
     try {
       const { data } = await api.post('/auth/verify-email', { email, code });
-      login(data.token, data.user);
-      navigate('/');
+      navigate('/register', {
+        replace: true,
+        state: {
+          verificationApproved: true,
+          email: data.user.email,
+          username: data.user.username,
+          role: data.user.role,
+        },
+      });
     } catch (requestError) {
       const details = requestError.response?.data?.details;
       setError(details ? details.join(' ') : requestError.response?.data?.message || 'Could not verify email.');
@@ -106,26 +205,40 @@ export default function VerifyEmail() {
     <div className="auth-shell">
       <div className="auth-card verification-card">
         <p className="eyebrow">SwiftSpace</p>
-        <h1>Verify your email</h1>
+        <h1>{verifiedProfile ? 'Email verified' : 'Verify your email'}</h1>
         <p className="auth-sub">
-          {firebaseLinkHandled
-            ? 'Your email is verified. Sign in to continue.'
+          {verifiedProfile
+            ? 'Your email verification is approved.'
+            : firebaseLinkHandled
+            ? 'Email verification approved. Returning to sign up…'
             : firebaseMode
               ? 'Check your inbox and click the Firebase verification link to continue.'
               : 'Enter the six-digit code sent to your email address.'}
         </p>
+        {verifiedProfile && <p className="form-success" role="status">{message}</p>}
+        {verifiedProfile && setupMessage && <p className="form-info" role="status">{setupMessage}</p>}
+        {verifiedProfile && (
+          <button
+            type="button"
+            className="btn-primary verification-signin"
+            onClick={() => navigate('/register', {
+              replace: true,
+              state: { verificationApproved: true, ...verifiedProfile },
+            })}
+          >
+            Continue to sign up
+          </button>
+        )}
         {!firebaseMode && !firebaseLinkHandled && <form onSubmit={handleSubmit} noValidate>
           <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
           <label>Verification code<input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} required /></label>
-          {error && <p className="form-error">{error}</p>}
-          {message && <p className="form-success">{message}</p>}
           <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Verifying…' : 'Verify email'}</button>
         </form>}
-        {firebaseLinkHandled
-          ? <Link className="btn-primary verification-signin" to="/login">Continue to sign in</Link>
-          : firebaseMode
-            ? <Link className="btn-link verification-signin" to="/login">Back to sign in</Link>
-            : <button type="button" className="btn-link" onClick={resendCode}>Resend code</button>}
+        {error && <p className="form-error" role="alert">{error}</p>}
+        {message && !verifiedProfile && <p className="form-success" role="status">{message}</p>}
+        {!firebaseLinkHandled && !verifiedProfile && (firebaseMode
+          ? <button type="button" className="btn-link verification-signin" onClick={() => navigate('/register')}>Back to sign up</button>
+          : <button type="button" className="btn-link" onClick={resendCode}>Resend code</button>)}
       </div>
     </div>
   );

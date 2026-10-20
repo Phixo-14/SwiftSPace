@@ -1,6 +1,5 @@
 // Run with: npm run seed
-// Wipes and re-populates the catalog collection with a small, minimalist
-// starter set so the frontend has something to render immediately.
+// Adds starter furniture while preserving existing catalog items.
 require('dotenv').config();
 const connectDB = require('../config/db');
 const CatalogItem = require('../models/CatalogItem');
@@ -14,22 +13,39 @@ const ITEMS = [
   { name: 'Potted Fig', category: 'greenery', footprint: { width: 1, length: 1 }, iconKey: 'plant', defaultColor: '#7C8B6E', properties: {} },
   { name: 'Low Bookcase', category: 'storage', footprint: { width: 2, length: 1 }, iconKey: 'rack', defaultColor: '#9C8F76', properties: { shelves: 2 } },
   { name: 'Pendant Light', category: 'lighting', footprint: { width: 1, length: 1 }, iconKey: 'lamp', defaultColor: '#EFE6CB', properties: { brightness: 45, warmth: 'neutral' } },
+  { name: 'L Shape Chair', category: 'seating', footprint: { width: 1, length: 1 }, iconKey: 'l-shape-chair', defaultColor: '#FFFFFF', properties: {} },
+  { name: 'Square Table 4 Seats', category: 'surface', footprint: { width: 2, length: 2 }, iconKey: 'square-table-4-seats', defaultColor: '#FFFFFF', properties: { seats: 4 } },
+  { name: 'Rectangle Table with 4 Chairs', category: 'surface', footprint: { width: 2, length: 3 }, iconKey: 'rectangle-table-4-chairs', defaultColor: '#FFFFFF', properties: { seats: 4 } },
+  { name: 'Circle Table with 4 Chairs', category: 'surface', footprint: { width: 2, length: 2 }, iconKey: 'circle-table-4-chairs', defaultColor: '#FFFFFF', properties: { seats: 4 } },
+  { name: 'Single Table with a Seat', category: 'surface', footprint: { width: 1, length: 1 }, iconKey: 'single-table-seat', defaultColor: '#FFFFFF', properties: { seats: 1 } },
+  { name: 'Table with 2 Seats', category: 'surface', footprint: { width: 2, length: 1 }, iconKey: 'table-2-seats', defaultColor: '#FFFFFF', properties: { seats: 2 } },
+  { name: 'Single Double Ladder Bed', category: 'sleeping', footprint: { width: 1, length: 2 }, iconKey: 'single-double-ladder-bed', defaultColor: '#FFFFFF', properties: {} },
+  { name: 'Single Square Table with a Seat', category: 'surface', footprint: { width: 1, length: 1 }, iconKey: 'single-square-table-seat', defaultColor: '#FFFFFF', properties: { seats: 1 } },
 ];
+
+async function addMissingCatalogItems() {
+  const operations = ITEMS.map((item) => ({
+    updateOne: {
+      filter: { name: item.name },
+      update: { $setOnInsert: item },
+      upsert: true,
+    },
+  }));
+  const result = await CatalogItem.bulkWrite(operations, { ordered: false });
+  return result.upsertedCount || 0;
+}
 
 async function seed() {
   await connectDB();
-  await CatalogItem.deleteMany({});
-  const created = await CatalogItem.insertMany(ITEMS);
-  console.log(`Seeded ${created.length} catalog items.`);
+  const added = await addMissingCatalogItems();
+  console.log(`Added ${added} missing catalog items.`);
   process.exit(0);
 }
 
 async function ensureCatalog() {
-  const count = await CatalogItem.countDocuments();
-  if (count > 0) return false;
-  await CatalogItem.insertMany(ITEMS);
-  console.log(`Catalog was empty; seeded ${ITEMS.length} catalog items.`);
-  return true;
+  const added = await addMissingCatalogItems();
+  if (added) console.log(`Added ${added} missing catalog items.`);
+  return added > 0;
 }
 
 if (require.main === module) {

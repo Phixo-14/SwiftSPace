@@ -570,6 +570,12 @@ a {
   margin: 0.25rem 0 0.75rem;
 }
 
+.form-info {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 0.25rem 0 0.75rem;
+}
+
 .admin-panel {
   margin-bottom: 2rem;
   padding: 1.25rem;
@@ -1115,6 +1121,125 @@ a {
 
 .inference-direction.similar {
   color: var(--text);
+}
+
+.password-requirements {
+  display: grid;
+  gap: 0.25rem;
+  margin: -0.45rem 0 0.15rem;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.password-requirements li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.password-requirements li span {
+  width: 1rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.password-requirements li.met,
+.password-requirements li.met span {
+  color: var(--accent-strong);
+}
+
+.registration-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.registration-consent input[type='checkbox'] {
+  margin-top: 0.2rem;
+  accent-color: var(--accent);
+}
+
+.registration-consent a {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.verification-approved-details {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1.25rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: rgba(130, 214, 168, 0.06);
+}
+
+.verification-approved-details p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.verification-approved-details strong {
+  color: var(--text);
+}
+
+.verification-approved-details .btn-primary {
+  justify-self: start;
+  margin-top: 0.4rem;
+}
+
+.legal-page-shell {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 2rem 1rem 3rem;
+  background: radial-gradient(circle at top, #18362a 0%, var(--bg) 42%);
+}
+
+.legal-page-card {
+  width: min(820px, 100%);
+  padding: clamp(1.5rem, 3vw, 2.5rem);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(18, 32, 27, 0.9);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+}
+
+.legal-page-card h1 {
+  margin-bottom: 0.5rem;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+}
+
+.legal-page-intro {
+  margin: 0 0 1.5rem;
+  color: var(--text-muted);
+}
+
+.legal-page-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(65, 109, 91, 0.45);
+}
+
+.legal-page-section h2 {
+  margin-bottom: 0.6rem;
+  font-size: 1.1rem;
+}
+
+.legal-page-section p {
+  margin: 0.5rem 0;
+  color: var(--text-muted);
+}
+
+.legal-page-actions {
+  margin-top: 2rem;
 }
 
 .inference-metrics {
@@ -1839,6 +1964,17 @@ a {
   font-size: 13px;
   color: var(--text-muted);
   margin-bottom: 1rem;
+}
+
+.field-error {
+  margin: -0.7rem 0 0.85rem;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.password-field-group .field-error {
+  margin: 0.2rem 0 0.85rem;
 }
 
 .auth-card form .registration-consent {

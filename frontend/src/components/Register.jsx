@@ -1,50 +1,133 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import api from '../api.js';
 import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from 'firebase/auth';
 import { firebaseAuth, firebaseConfigured } from '../firebase.js';
 import PasswordInput from './PasswordInput.jsx';
 
+const legalLinks = {
+  terms: '/terms',
+  privacy: '/privacy',
+};
+
+function getRegistrationErrors({ username, email, password, confirmPassword, termsAccepted }) {
+  const fullName = username.trim().replace(/\s+/g, ' ');
+  return {
+    username: !/^\p{L}+(?: \p{L}+)+$/u.test(fullName) || Array.from(fullName).length > 50
+      ? 'Enter full name'
+      : '',
+    email: !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+      ? 'Please enter a valid email address.'
+      : '',
+    password: !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,16}$/.test(password)
+      ? 'Password must be 8–16 characters and include uppercase, lowercase, a number, and a symbol.'
+      : '',
+    confirmPassword: password !== confirmPassword ? 'Passwords do not match.' : '',
+    termsAccepted: !termsAccepted
+      ? 'You must accept the Terms of Service and Privacy Policy to create an account.'
+      : '',
+  };
+}
+
 export default function Register() {
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
+  const location = useLocation();
+  const verificationApproved = location.state?.verificationApproved === true;
+  const adminSetupToken = new URLSearchParams(location.hash.replace(/^#/, '')).get('setup') || '';
+  const [username, setUsername] = useState(location.state?.username || '');
+  const [email, setEmail] = useState(location.state?.email || '');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('homeowner');
-  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [role, setRole] = useState(location.state?.role || 'homeowner');
+  const [termsAccepted, setTermsAccepted] = useState(verificationApproved);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [touchedFields, setTouchedFields] = useState({});
   const [loading, setLoading] = useState(false);
+  const [registrationOpen, setRegistrationOpen] = useState(false);
+  const [checkingRegistration, setCheckingRegistration] = useState(true);
+  const [setupAvailable, setSetupAvailable] = useState(Boolean(adminSetupToken));
   const navigate = useNavigate();
+  const passwordRequirements = [
+    { label: '8–16 characters', met: password.length >= 8 && password.length <= 16 },
+    { label: 'At least one uppercase letter', met: /[A-Z]/.test(password) },
+    { label: 'At least one lowercase letter', met: /[a-z]/.test(password) },
+    { label: 'At least one number', met: /\d/.test(password) },
+    { label: 'At least one symbol', met: /[^A-Za-z0-9]/.test(password) },
+  ];
+
+  useEffect(() => {
+    api.get('/auth/registration-status')
+      .then(({ data }) => {
+        setRegistrationOpen(data.registrationOpen);
+        setSetupAvailable(data.adminSetupAvailable);
+      })
+      .catch(() => {
+        setRegistrationOpen(false);
+        setSetupAvailable(false);
+      })
+      .finally(() => setCheckingRegistration(false));
+  }, []);
+
+  function updateField(field, value) {
+    const values = { username, email, password, confirmPassword, termsAccepted, [field]: value };
+    if (field === 'username') setUsername(value);
+    if (field === 'email') setEmail(value);
+    if (field === 'password') setPassword(value);
+    if (field === 'confirmPassword') setConfirmPassword(value);
+    if (field === 'termsAccepted') setTermsAccepted(value);
+    setFieldErrors(getRegistrationErrors(values));
+  }
+
+  function markFieldTouched(field) {
+    setTouchedFields((current) => ({ ...current, [field]: true }));
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    const validationErrors = getRegistrationErrors({ username, email, password, confirmPassword, termsAccepted });
+    setFieldErrors(validationErrors);
+    const firstInvalidField = ['username', 'email', 'password', 'confirmPassword', 'termsAccepted']
+      .find((field) => validationErrors[field]);
+    if (firstInvalidField) markFieldTouched(firstInvalidField);
+    if (firstInvalidField) return;
+
     const fullName = username.trim().replace(/\s+/g, ' ');
-    if (!/^[A-Za-z]+(?: [A-Za-z]+)+$/.test(fullName)) {
-      setError('Please enter your first name and surname');
-      return;
-    }
-    if (!email.includes('@')) {
-      setError('Please enter a valid email address.');
-      return;
-    }
-    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/.test(password)) {
-      setError('Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol.');
-      return;
-    }
-    if (!termsAccepted) {
-      setError('You must accept the Terms of Service and Privacy Policy to create an account.');
-      return;
-    }
     setLoading(true);
     try {
       if (firebaseConfigured) {
         const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
         await updateProfile(credential.user, { displayName: fullName });
+        if (adminSetupToken) {
+          await api.post('/auth/initial-admin-setup', {
+            setupToken: adminSetupToken,
+            idToken: await credential.user.getIdToken(),
+            username: fullName,
+            email,
+            termsAccepted,
+          });
+        }
         await sendEmailVerification(credential.user);
         localStorage.setItem('firebase_pending_username', fullName);
-        localStorage.setItem('firebase_pending_role', role);
+        localStorage.setItem('firebase_pending_email', email);
+        localStorage.setItem('firebase_pending_role', adminSetupToken ? 'admin' : role);
+        localStorage.setItem('firebase_pending_terms_accepted', 'true');
         sessionStorage.setItem('firebase_pending_terms_accepted', 'true');
         navigate(`/verify-email?email=${encodeURIComponent(email)}`);
+        return;
+      }
+      if (adminSetupToken) {
+        const { data } = await api.post('/auth/initial-admin-setup', {
+          setupToken: adminSetupToken,
+          username: fullName,
+          email,
+          password,
+          termsAccepted,
+        });
+        navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
+          state: { developmentCode: data.developmentCode, message: data.message },
+        });
         return;
       }
       const { data } = await api.post('/auth/register', {
@@ -106,63 +189,176 @@ export default function Register() {
 
         <div className="auth-card">
           <p className="eyebrow">SwiftSpace</p>
-          <h1>Create your account</h1>
-          <p className="auth-sub">Start designing and save your room layouts in SwiftSpace.</p>
-          <form onSubmit={handleSubmit} noValidate>
+          <h1>{verificationApproved ? 'Email approved' : adminSetupToken ? 'Administrator setup' : 'Create your account'}</h1>
+          <p className="auth-sub">
+            {verificationApproved
+              ? 'Your email verification is approved. Your account has already been created; sign in to continue.'
+              : adminSetupToken
+                ? 'Create the client administrator account. This one-time setup link closes after it is used.'
+                : 'Start designing and save your room layouts in SwiftSpace.'}
+          </p>
+          {!verificationApproved && !adminSetupToken && !checkingRegistration && !registrationOpen && (
+            <p className="form-error" role="status">
+              {setupAvailable
+                ? 'The client administrator must complete the one-time setup before user registration opens.'
+                : 'This administrator setup link has already been used. User registration is now open.'}
+            </p>
+          )}
+          {!verificationApproved && adminSetupToken && !checkingRegistration && !setupAvailable && (
+            <p className="form-error" role="alert">This one-time administrator setup link has already been used.</p>
+          )}
+          {verificationApproved && (
+            <div className="verification-approved-details" role="status">
+              <p><strong>Name:</strong> {username}</p>
+              <p><strong>Email:</strong> {email}</p>
+              <p><strong>Account type:</strong> {role === 'admin' ? 'Administrator' : role === 'interior-designer' ? 'Interior Designer' : 'Homeowner / Client'}</p>
+              <p>Your password is not retained for security. Use the password you chose when signing in.</p>
+              <Link className="btn-primary" to={`/login?email=${encodeURIComponent(email)}`}>Continue to sign in</Link>
+            </div>
+          )}
+          {!verificationApproved && !checkingRegistration && (adminSetupToken ? setupAvailable : registrationOpen) && (
+          <form
+            onSubmit={handleSubmit}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) {
+                setPasswordFocused(false);
+              }
+            }}
+            noValidate
+          >
             <label>
               Full Name
               <input
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onBlur={() => markFieldTouched('username')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') markFieldTouched('username');
+                }}
+                onChange={(event) => {
+                  const characters = Array.from(event.target.value);
+                  const firstCharacter = characters.shift();
+                  const capitalizedName = firstCharacter
+                    ? [...Array.from(firstCharacter.toLocaleUpperCase()), ...characters].slice(0, 50).join('')
+                    : '';
+                  updateField('username', capitalizedName);
+                }}
                 placeholder="e.g. Juan Cruz"
-                pattern="[A-Za-z]+(?: [A-Za-z]+)+"
-                title="Please enter your first name and surname"
-                maxLength={30}
+                title="Enter full name"
+                maxLength={50}
+                aria-invalid={Boolean(fieldErrors.username)}
+                aria-describedby={fieldErrors.username ? 'register-name-error' : undefined}
                 required
               />
             </label>
-            <label>
+            {touchedFields.username && fieldErrors.username && <p id="register-name-error" className="field-error" role="alert">{fieldErrors.username}</p>}
+            {!adminSetupToken && <label>
               I am a
               <select value={role} onChange={(event) => setRole(event.target.value)} required>
                 <option value="homeowner">Homeowner / Client</option>
                 <option value="interior-designer">Interior Designer</option>
               </select>
-            </label>
+            </label>}
             <label>
               Email
               <input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => markFieldTouched('email')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') markFieldTouched('email');
+                }}
+                onChange={(event) => updateField('email', event.target.value)}
                 placeholder="e.g. juan@example.com"
+                aria-invalid={Boolean(fieldErrors.email)}
+                aria-describedby={fieldErrors.email ? 'register-email-error' : undefined}
                 required
               />
             </label>
+            {touchedFields.email && fieldErrors.email && <p id="register-email-error" className="field-error" role="alert">{fieldErrors.email}</p>}
+            <div
+              className="password-field-group"
+              onFocus={() => {
+                setPasswordFocused(true);
+              }}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                  setPasswordFocused(false);
+                  markFieldTouched('password');
+                }
+              }}
+            >
+              <label>
+                Password
+                <PasswordInput
+                  value={password}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') markFieldTouched('password');
+                  }}
+                  onChange={(event) => updateField('password', event.target.value)}
+                  minLength={8}
+                  maxLength={16}
+                  pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,16}"
+                  title="Password must be 8–16 characters and include uppercase, lowercase, a number, and a symbol."
+                  aria-invalid={Boolean(fieldErrors.password)}
+                  aria-describedby={fieldErrors.password ? 'register-password-error' : undefined}
+                  required
+                />
+              </label>
+              {passwordFocused && (
+                <ul className="password-requirements" aria-label="Password requirements" aria-live="polite">
+                  {passwordRequirements.map((requirement) => (
+                    <li className={requirement.met ? 'met' : ''} key={requirement.label}>
+                      <span aria-hidden="true">{requirement.met ? '✓' : '○'}</span>
+                      {requirement.label}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {touchedFields.password && fieldErrors.password && <p id="register-password-error" className="field-error" role="alert">{fieldErrors.password}</p>}
+            </div>
             <label>
-              Password
+              Confirm password
               <PasswordInput
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                minLength={12}
-                pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}"
-                title="Password must be at least 12 characters and include uppercase, lowercase, a number, and a symbol."
+                value={confirmPassword}
+                onBlur={() => markFieldTouched('confirmPassword')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') markFieldTouched('confirmPassword');
+                }}
+                onChange={(event) => updateField('confirmPassword', event.target.value)}
+                autoComplete="new-password"
+                aria-invalid={Boolean(fieldErrors.confirmPassword)}
+                aria-describedby={fieldErrors.confirmPassword ? 'register-confirm-password-error' : undefined}
                 required
               />
             </label>
+            {touchedFields.confirmPassword && fieldErrors.confirmPassword && <p id="register-confirm-password-error" className="field-error" role="alert">{fieldErrors.confirmPassword}</p>}
             <label className="registration-consent">
               <input
                 type="checkbox"
                 checked={termsAccepted}
-                onChange={(event) => setTermsAccepted(event.target.checked)}
+                onBlur={() => markFieldTouched('termsAccepted')}
+                onChange={(event) => updateField('termsAccepted', event.target.checked)}
+                aria-invalid={Boolean(fieldErrors.termsAccepted)}
+                aria-describedby={fieldErrors.termsAccepted ? 'register-terms-error' : undefined}
                 required
               />
-              <span>I agree to the SwiftSpace Terms of Service and Privacy Policy.</span>
+              <span>
+                I agree to the
+                {' '}
+                <a href={legalLinks.terms} target="_blank" rel="noopener noreferrer">Terms of Service</a>
+                {' '}
+                and
+                {' '}
+                <a href={legalLinks.privacy} target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+              </span>
             </label>
+            {touchedFields.termsAccepted && fieldErrors.termsAccepted && <p id="register-terms-error" className="field-error" role="alert">{fieldErrors.termsAccepted}</p>}
             {error && <p className="form-error">{error}</p>}
-            <button type="submit" className="btn-primary" disabled={loading}>
+            <button type="submit" className="btn-primary" disabled={loading || checkingRegistration}>
               {loading ? 'Creating account…' : 'Create account'}
             </button>
           </form>
+          )}
           <p className="auth-switch">
             Already have an account? <Link to="/login">Sign in</Link>
           </p>
