@@ -7,6 +7,8 @@ const UserSchema = new mongoose.Schema(
     firebaseUid: { type: String, unique: true, sparse: true, default: null },
     passwordHash: { type: String, required: true },
     role: { type: String, enum: ['homeowner', 'interior-designer', 'admin'], default: 'homeowner' },
+    bannedAt: { type: Date, default: null },
+    bannedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     emailVerified: { type: Boolean, default: false },
     termsAcceptedAt: { type: Date, default: null },
     emailVerificationCodeHash: { type: String, default: null },

@@ -1,9 +1,9 @@
 const express = require('express');
 const Joi = require('joi');
-const { registrationStatus, validateInitialAdminSetup, setupInitialAdmin, register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, createAdmin, createUser, deleteUser, updateUserRole, verifyEmail, resendVerification, getAdminOverview, startMfaSetup, verifyMfaSetup, disableMfa, verifyMfaLogin } = require('../controllers/authController');
+const { registrationStatus, validateInitialAdminSetup, setupInitialAdmin, register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, createAdmin, createUser, banUser, verifyEmail, resendVerification, getAdminOverview, startMfaSetup, verifyMfaSetup, disableMfa, verifyMfaLogin } = require('../controllers/authController');
 const { getSystemLogs } = require('../controllers/systemLogController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { validateBody, registerSchema, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, initialAdminSetupSchema, initialAdminSetupTokenSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, userRoleSchema, mfaSchema } = require('../middleware/validators');
+const { validateBody, registerSchema, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, initialAdminSetupSchema, initialAdminSetupTokenSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, mfaSchema } = require('../middleware/validators');
 const { loginLimiter } = require('../middleware/rateLimiters');
 
 const router = express.Router();
@@ -27,8 +27,7 @@ router.post('/mfa/verify', requireAuth, validateBody(mfaSchema), verifyMfaSetup)
 router.post('/mfa/disable', requireAuth, validateBody(mfaSchema), disableMfa);
 router.post('/admins', requireAuth, requireAdmin, validateBody(adminSchema), createAdmin);
 router.post('/users', requireAuth, requireAdmin, validateBody(registerSchema), createUser);
-router.patch('/users/:id/role', requireAuth, requireAdmin, validateBody(userRoleSchema), updateUserRole);
-router.delete('/users/:id', requireAuth, requireAdmin, deleteUser);
+router.patch('/users/:id/ban', requireAuth, requireAdmin, validateBody(Joi.object({ banned: Joi.boolean().required() })), banUser);
 router.get('/admin/overview', requireAuth, requireAdmin, getAdminOverview);
 router.get('/admin/logs', requireAuth, requireAdmin, getSystemLogs);
 

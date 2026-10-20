@@ -291,6 +291,9 @@ function signToken(user) {
 }
 
 async function issueUserSession(user, req, res) {
+  if (user.bannedAt) {
+    return res.status(403).json({ message: 'This account has been banned. Contact an administrator.' });
+  }
   const token = signToken(user);
   user.failedLoginAttempts = 0;
   user.lockedUntil = null;
@@ -318,6 +321,9 @@ async function register(req, res) {
 
   const existing = await User.findOne({ email: cleanEmail });
   if (existing) {
+    if (existing.bannedAt) {
+      return res.status(403).json({ message: 'This account has been banned. Contact an administrator.' });
+    }
     if (existing.role === 'admin' || existing.emailVerified) {
       return res.status(409).json({ message: 'A user with that email already exists.' });
     }
@@ -358,6 +364,7 @@ async function verifyMfaLogin(req, res) {
     if (!user || !user.mfaEnabled) {
       return res.status(401).json({ message: 'Invalid email or MFA code.' });
     }
+    if (user.bannedAt) return res.status(403).json({ message: 'This account has been banned. Contact an administrator.' });
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       return res.status(423).json({ message: 'This account is temporarily locked because of repeated failed logins.' });
@@ -391,6 +398,7 @@ async function login(req, res) {
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
+    if (user.bannedAt) return res.status(403).json({ message: 'This account has been banned. Contact an administrator.' });
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       return res.status(423).json({ message: 'This account is temporarily locked because of repeated failed logins.' });
@@ -439,6 +447,7 @@ async function adminLogin(req, res) {
     if (!user) {
       return res.status(401).json({ message: 'Invalid administrator email or password.' });
     }
+    if (user.bannedAt) return res.status(403).json({ message: 'This account has been banned. Contact an administrator.' });
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       return res.status(423).json({ message: 'This account is temporarily locked because of repeated failed logins.' });
@@ -499,6 +508,9 @@ async function firebaseSync(req, res) {
 
   try {
     let user = await User.findOne({ $or: [{ firebaseUid: decoded.uid }, { email: decoded.email }] });
+    if (user?.bannedAt) {
+      return res.status(403).json({ message: 'This account has been banned. Contact an administrator.' });
+    }
     if (!user) {
       if (req.body.termsAccepted !== true) {
         return res.status(400).json({ message: 'You must accept the Terms of Service and Privacy Policy to create an account.' });
@@ -520,6 +532,7 @@ async function firebaseSync(req, res) {
         }
         user = await User.findOne({ $or: [{ firebaseUid: decoded.uid }, { email: decoded.email }] });
         if (!user) throw createError;
+        if (user.bannedAt) return res.status(403).json({ message: 'This account has been banned. Contact an administrator.' });
         user.firebaseUid = decoded.uid;
         user.emailVerified = true;
         if (req.body.termsAccepted === true && !user.termsAcceptedAt) {
@@ -536,6 +549,7 @@ async function firebaseSync(req, res) {
       await user.save();
     }
 
+    if (user.bannedAt) return res.status(403).json({ message: 'This account has been banned. Contact an administrator.' });
     const token = signToken(user);
     return res.json({ token, user: { id: user._id, username: user.username, email: user.email, role: user.role } });
   } catch (error) {
@@ -821,6 +835,7 @@ async function verifyEmail(req, res) {
   if (!user) {
     return res.status(400).json({ message: 'Invalid or expired verification code.' });
   }
+  if (user.bannedAt) return res.status(403).json({ message: 'This account has been banned. Contact an administrator.' });
   const currentHash = user.emailVerificationCodeHash ? Buffer.from(user.emailVerificationCodeHash, 'hex') : null;
   const candidateHash = Buffer.from(hashVerificationCode(code), 'hex');
   if (user.emailVerificationExpiresAt < new Date() || !currentHash || currentHash.length !== candidateHash.length || !crypto.timingSafeEqual(currentHash, candidateHash)) {
@@ -854,43 +869,36 @@ async function resendVerification(req, res) {
   res.json({ message: 'If that account needs verification, a new code was sent.' });
 }
 
-// DELETE /api/auth/users/:id — requires an existing admin token.
-async function deleteUser(req, res) {
+// PATCH /api/auth/users/:id/ban — requires an existing admin token.
+async function banUser(req, res) {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ message: 'Invalid user id.' });
   }
   if (req.params.id === req.user.id) {
-    return res.status(400).json({ message: 'You cannot delete your own admin account.' });
+    return res.status(400).json({ message: 'You cannot ban your own admin account.' });
   }
 
+  const { banned } = req.body;
   const user = await User.findById(req.params.id);
-  if (!user) return res.status(404).json({ message: 'User not found.' });
-  if (user.role === 'admin') {
-    return res.status(400).json({ message: 'Admin accounts cannot be deleted as regular users.' });
-  }
-
-  await deleteUserData([user._id]);
-  res.status(204).send();
-}
-
-async function updateUserRole(req, res) {
-  if (!mongoose.isValidObjectId(req.params.id)) {
-    return res.status(400).json({ message: 'Invalid user id.' });
-  }
-
-  const user = await User.findOneAndUpdate(
-    { _id: req.params.id, role: { $ne: 'admin' } },
-    { $set: { role: req.body.role } },
-    { new: true, runValidators: true }
-  ).select('_id username email role');
   if (!user) return res.status(404).json({ message: 'User not found or cannot be changed.' });
-  res.json({ user });
+
+  user.bannedAt = banned ? (user.bannedAt || new Date()) : null;
+  user.bannedBy = banned ? req.user.id : null;
+  user.passwordChangedAt = new Date();
+  await user.save();
+  res.json({ user: {
+    _id: user._id,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+    bannedAt: user.bannedAt,
+  } });
 }
 
 // GET /api/auth/admin/overview — requires an existing admin token.
 async function getAdminOverview(req, res) {
-  const [users, rooms, catalogItems, catalogCategoryItems, allRooms, timers, placementErrors, rotationAdjustments] = await Promise.all([
-    User.find().select('_id username email role createdAt').sort({ role: 1, createdAt: -1 }),
+  const [users, rooms, catalogItems, catalogCategoryItems, allRooms, timers, placementErrors, rotationAdjustments, rearrangementRecordCount, rearrangementVersions] = await Promise.all([
+    User.find().select('_id username email role bannedAt createdAt').sort({ role: 1, createdAt: -1 }),
     Room.find().select('roomName dimensions userId createdAt updatedAt').populate('userId', 'username email').sort({ updatedAt: -1 }),
     CatalogItem.countDocuments(),
     CatalogItem.find().select('category'),
@@ -900,6 +908,12 @@ async function getAdminOverview(req, res) {
     RoomTimer.find(),
     PlacementError.find().populate('catalogItemId', 'name'),
     FurnitureRotationAdjustment.countDocuments(),
+    RoomVersion.countDocuments({ name: /^Rearrangement record ·/ }),
+    RoomVersion.find({ name: /^Rearrangement record ·/ })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .populate('roomId', 'roomName')
+      .populate('userId', 'username'),
   ]);
 
   const timerByRoom = new Map(timers.map((timer) => [timer.roomId.toString(), Number(timer.seconds) || 0]));
@@ -922,6 +936,15 @@ async function getAdminOverview(req, res) {
       username: roomById.get(record.roomId.toString())?.userId?.username || 'Unknown user',
     }))
     .sort((first, second) => new Date(second.occurredAt) - new Date(first.occurredAt));
+  const recentRearrangements = rearrangementVersions.map((record) => ({
+    _id: record._id,
+    name: record.name,
+    createdAt: record.createdAt,
+    timerSeconds: record.snapshot?.timerSeconds || 0,
+    roomId: record.roomId?._id || null,
+    roomName: record.roomId?.roomName || 'Deleted room',
+    username: record.userId?.username || 'Deleted user',
+  }));
   const totalArea = allRooms.reduce(
     (total, room) => total + room.dimensions.width * room.dimensions.length,
     0
@@ -946,12 +969,14 @@ async function getAdminOverview(req, res) {
       catalogItems,
       placements: totalPlacements,
       furnitureRotationAdjustments: rotationAdjustments,
+      rearrangementRecords: rearrangementRecordCount,
       overlaps: overlapRecords.length,
       averageArea: allRooms.length ? Math.round(totalArea / allRooms.length) : 0,
       categoryCounts,
     },
     users,
     recentRooms,
+    recentRearrangements,
     monthlyRooms,
     recentOverlaps: overlapRecords.slice(0, 8),
   });
@@ -971,8 +996,7 @@ module.exports = {
   syncFirebaseUsersFromFirebase,
   createAdmin,
   createUser,
-  deleteUser,
-  updateUserRole,
+  banUser,
   verifyEmail,
   resendVerification,
   getAdminOverview,

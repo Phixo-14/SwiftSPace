@@ -829,7 +829,7 @@ a {
 
 .admin-stats {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1rem;
   margin-bottom: 0;
 }
@@ -1657,43 +1657,12 @@ a {
   color: var(--accent-strong);
 }
 
-.admin-user-role-control select {
-  max-width: 125px;
-  height: 28px;
-  padding: 0 0.3rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  background: var(--panel-raised);
-  color: var(--text);
-  font-size: 10px;
+.role-badge.banned {
+  border-color: rgba(217, 122, 109, 0.55);
+  color: var(--danger);
 }
 
-.user-role-save-button {
-  min-width: 58px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  padding: 0 0.5rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--accent-strong);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.user-role-save-button:hover:not(:disabled) {
-  background: rgba(130, 214, 168, 0.12);
-}
-
-.user-role-save-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.user-delete-button {
+.user-ban-button {
   min-width: 58px;
   height: 28px;
   display: inline-flex;
@@ -1709,13 +1678,22 @@ a {
   font-weight: 600;
 }
 
-.user-delete-button:hover {
+.user-ban-button:hover {
   background: rgba(217, 122, 109, 0.12);
 }
 
-.user-delete-button:disabled {
+.user-ban-button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.user-ban-button.unban {
+  border-color: var(--border-strong);
+  color: var(--accent-strong);
+}
+
+.user-ban-button.unban:hover {
+  background: rgba(130, 214, 168, 0.12);
 }
 
 .admin-room-row {

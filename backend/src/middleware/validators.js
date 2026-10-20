@@ -73,9 +73,6 @@ const accountDeleteSchema = Joi.object({
 });
 
 const adminSchema = registerSchema.keys({ role: Joi.forbidden() });
-const userRoleSchema = Joi.object({
-  role: Joi.string().valid('homeowner', 'interior-designer').required(),
-});
 
 function quarterGridNumber(minimum = 0) {
   return Joi.number().min(minimum).max(50).custom((value, helpers) => {
@@ -177,4 +174,4 @@ function validateBody(schema) {
   };
 }
 
-module.exports = { registerSchema, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, projectFolderSchema, roomFolderSchema, firebaseSyncSchema, initialAdminSetupSchema, initialAdminSetupTokenSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, userRoleSchema, roomSchema, roomVersionSchema, validateBody };
+module.exports = { registerSchema, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, projectFolderSchema, roomFolderSchema, firebaseSyncSchema, initialAdminSetupSchema, initialAdminSetupTokenSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, roomSchema, roomVersionSchema, validateBody };

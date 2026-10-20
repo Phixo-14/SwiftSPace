@@ -175,6 +175,8 @@ export default function RoomEditor() {
   const baselineRef = useRef(null);
   const historyRef = useRef({ scope: null, past: [], future: [], current: null });
   const historyReadyScopeRef = useRef(null);
+  const lastArrangementRecordIntervalRef = useRef(0);
+  const arrangementRecordInFlightRef = useRef(false);
   const canvasWrapRef = useRef(null);
   const gridResizeRef = useRef(null);
   const furnitureResizeRef = useRef(null);
@@ -1884,6 +1886,37 @@ export default function RoomEditor() {
     }
   }
 
+  useEffect(() => {
+    const interval = Math.floor(timerSeconds / (3 * 60));
+    if (!draftReady || loading || !timerRunning || arrangementRecordInFlightRef.current || interval < 1
+      || interval <= lastArrangementRecordIntervalRef.current || saving || versionSaving) return;
+
+    lastArrangementRecordIntervalRef.current = interval;
+    arrangementRecordInFlightRef.current = true;
+    let targetRoomId = id;
+    const recordSeconds = interval * 3 * 60;
+    const name = `Rearrangement record · ${formatTimer(recordSeconds)}`;
+
+    async function saveTimedArrangementRecord() {
+      try {
+        const saved = await handleSave(isNew ? (room) => {
+          targetRoomId = room._id;
+        } : undefined);
+        if (!saved || !targetRoomId) return;
+        const { data } = await api.post(`/rooms/${targetRoomId}/versions`, { name });
+        setVersions((current) => [data, ...current].slice(0, 20));
+        setStatus(`Rearrangement record saved at ${formatTimer(recordSeconds)}.`);
+        if (isNew) navigate(`/room/${targetRoomId}`, { replace: true });
+      } catch (requestError) {
+        setStatus(requestError.response?.data?.message || 'Could not save the rearrangement record.');
+      } finally {
+        arrangementRecordInFlightRef.current = false;
+      }
+    }
+
+    saveTimedArrangementRecord();
+  }, [draftReady, handleSave, id, isNew, loading, navigate, saving, timerRunning, timerSeconds, versionSaving]);
+
   async function previewVersion(version) {
     setVersionPreviewLoadingId(version._id);
     setVersionError('');
@@ -2245,7 +2278,7 @@ export default function RoomEditor() {
         </div>
         <div className="topbar-actions">
           {(hoverError || status) && <span className={`status-text ${hoverError || status.startsWith('Placement error:') ? 'error' : ''}`}>{hoverError || status}</span>}
-          <span className="mono" aria-label="Workspace timer">{formatTimer(timerSeconds)}</span>
+          <span className="mono" aria-label="Workspace timer" title="A rearrangement record is saved every 3 active minutes">{formatTimer(timerSeconds)}</span>
           <span className="muted small">{timerRunning ? 'Active' : 'Paused after 1 minute idle'}</span>
           <button className="btn-primary" onClick={() => handleSave()} disabled={saving}>
             {saving ? 'Saving…' : 'Save canvas'}

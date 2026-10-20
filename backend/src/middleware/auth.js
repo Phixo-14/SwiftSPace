@@ -13,8 +13,9 @@ async function requireAuth(req, res, next) {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(payload.id).select('_id username email role passwordChangedAt');
+    const user = await User.findById(payload.id).select('_id username email role passwordChangedAt bannedAt');
     if (!user) return res.status(401).json({ message: 'Invalid or expired token.' });
+    if (user.bannedAt) return res.status(401).json({ message: 'This account has been banned. Contact an administrator.' });
 
     const passwordChangedAt = user.passwordChangedAt ? new Date(user.passwordChangedAt).getTime() : 0;
     const issuedAt = payload.iat ? payload.iat * 1000 : 0;

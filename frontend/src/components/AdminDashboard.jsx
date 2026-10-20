@@ -75,7 +75,7 @@ function getInferentialAnalysis(overview) {
 }
 
 export default function AdminDashboard() {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const navigate = useNavigate();
   const [overview, setOverview] = useState(null);
   const [form, setForm] = useState({ username: '', email: '', password: '' });
@@ -83,9 +83,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
-  const [deletingUserId, setDeletingUserId] = useState(null);
-  const [updatingUserRoleId, setUpdatingUserRoleId] = useState(null);
-  const [userRoleDrafts, setUserRoleDrafts] = useState({});
+  const [banningUserId, setBanningUserId] = useState(null);
   const [message, setMessage] = useState('');
   const [userMessage, setUserMessage] = useState('');
   const [error, setError] = useState('');
@@ -183,51 +181,26 @@ export default function AdminDashboard() {
     }
   }
 
-  async function handleDeleteUser(account) {
-    if (!window.confirm(`Delete ${account.username}? Their saved rooms will also be deleted.`)) return;
-    setDeletingUserId(account._id);
+  async function handleToggleUserBan(account) {
+    const banned = !account.bannedAt;
+    if (banned && !window.confirm(`Ban ${account.username} from signing in? Their account and saved rooms will be kept.`)) return;
+    setBanningUserId(account._id);
     setError('');
     try {
-      await api.delete(`/auth/users/${account._id}`);
-      setOverview((current) => current && {
+      const { data } = await api.patch(`/auth/users/${account._id}/ban`, { banned });
+      setOverview((current) => current && ({
         ...current,
-        users: current.users.filter((userAccount) => userAccount._id !== account._id),
-        stats: { ...current.stats, users: Math.max(0, current.stats.users - 1) },
-      });
-      api.get('/auth/admin/overview')
-        .then(({ data }) => setOverview(data))
-        .catch(() => setError('User deleted, but dashboard statistics could not refresh.'));
+        users: current.users.map((userAccount) => userAccount._id === account._id
+          ? { ...userAccount, bannedAt: data.user.bannedAt }
+          : userAccount),
+      }));
     } catch (requestError) {
-      setError(requestError.response?.data?.message || 'Could not delete user account.');
+      setError(requestError.response?.data?.message || 'Could not update user access.');
     } finally {
-      setDeletingUserId(null);
+      setBanningUserId(null);
     }
   }
 
-  async function handleUpdateUserRole(account) {
-    const role = userRoleDrafts[account._id] || account.role;
-    if (role === account.role) return;
-    setUpdatingUserRoleId(account._id);
-    setError('');
-    setUserMessage('');
-    try {
-      const { data } = await api.patch(`/auth/users/${account._id}/role`, { role });
-      setOverview((current) => current && ({
-        ...current,
-        users: current.users.map((user) => user._id === account._id ? data.user : user),
-      }));
-      setUserRoleDrafts((current) => {
-        const next = { ...current };
-        delete next[account._id];
-        return next;
-      });
-      setUserMessage(`${data.user.username} is now a ${role === 'homeowner' ? 'homeowner' : 'interior designer'}.`);
-    } catch (requestError) {
-      setError(requestError.response?.data?.message || 'Could not update account type.');
-    } finally {
-      setUpdatingUserRoleId(null);
-    }
-  }
   const overlapGroups = (overview?.recentOverlaps || []).reduce((groups, record) => {
     const username = record.username || 'Unknown user';
     if (!groups[username]) groups[username] = [];
@@ -311,6 +284,7 @@ export default function AdminDashboard() {
               <article className="stat-card"><span className="stat-label">Saved rooms</span><strong>{overview.stats.rooms}</strong><span className="stat-note">Across all workspaces</span></article>
               <article className="stat-card"><span className="stat-label">Catalog items</span><strong>{overview.stats.catalogItems}</strong><span className="stat-note">Available furniture</span></article>
               <article className="stat-card"><span className="stat-label">Rotation adjustments</span><strong>{overview.stats.furnitureRotationAdjustments}</strong><span className="stat-note">Saved angle changes tracked</span></article>
+              <article className="stat-card"><span className="stat-label">Rearrangement records</span><strong>{overview.stats.rearrangementRecords || 0}</strong><span className="stat-note">Automatic records every 3 active minutes</span></article>
             </section>
 
             <section className="analytics-panel" id="admin-analytics">
@@ -485,43 +459,17 @@ export default function AdminDashboard() {
                           ? 'Interior designer'
                           : account.role === 'homeowner' ? 'Homeowner / Client' : 'Admin'}
                       </span>
-                      {account.role !== 'admin' && (
-                        <>
-                          <label className="admin-user-role-control">
-                            <span className="sr-only">Account type for {account.username}</span>
-                            <select
-                              value={userRoleDrafts[account._id] || account.role}
-                              onChange={(event) => setUserRoleDrafts((current) => ({
-                                ...current,
-                                [account._id]: event.target.value,
-                              }))}
-                              aria-label={`Account type for ${account.username}`}
-                            >
-                              <option value="homeowner">Homeowner / Client</option>
-                              <option value="interior-designer">Interior designer</option>
-                            </select>
-                          </label>
-                          <button
-                            className="user-role-save-button"
-                            type="button"
-                            onClick={() => handleUpdateUserRole(account)}
-                            disabled={updatingUserRoleId === account._id
-                              || (userRoleDrafts[account._id] || account.role) === account.role}
-                            aria-label={`Save account type for ${account.username}`}
-                          >
-                            {updatingUserRoleId === account._id ? 'Saving…' : 'Save role'}
-                          </button>
-                          <button
-                            className="user-delete-button"
-                            type="button"
-                            onClick={() => handleDeleteUser(account)}
-                            disabled={deletingUserId === account._id}
-                            aria-label={`Delete ${account.username}`}
-                            title={`Delete ${account.username}`}
-                          >
-                            {deletingUserId === account._id ? 'Deleting…' : 'Delete'}
-                          </button>
-                        </>
+                      {account.bannedAt && <span className="role-badge banned">Banned</span>}
+                      {account._id !== user?.id && (
+                        <button
+                          className={`user-ban-button${account.bannedAt ? ' unban' : ''}`}
+                          type="button"
+                          onClick={() => handleToggleUserBan(account)}
+                          disabled={banningUserId === account._id}
+                          aria-label={`${account.bannedAt ? 'Restore access for' : 'Ban'} ${account.username}`}
+                        >
+                          {banningUserId === account._id ? 'Saving…' : account.bannedAt ? 'Unban' : 'Ban'}
+                        </button>
                       )}
                     </div>
                   ))}
@@ -541,6 +489,19 @@ export default function AdminDashboard() {
                 </div>
               </section>
             </div>
+
+            <section className="admin-section admin-rearrangement-section">
+              <div className="section-heading"><div><p className="eyebrow">Activity</p><h3>Rearrangement records</h3></div><span className="section-count">{overview.stats.rearrangementRecords || 0}</span></div>
+              <div className="room-list">
+                {(overview.recentRearrangements || []).length === 0 && <p className="muted">No automatic rearrangement records yet. A record is created after each 3 minutes of active room editing.</p>}
+                {(overview.recentRearrangements || []).map((record) => (
+                  <div className="admin-room-row" key={record._id}>
+                    <span><strong>{record.roomName}</strong><small>{record.username} · {record.name}</small></span>
+                    <span className="room-size mono" title={new Date(record.createdAt).toLocaleString()}>{formatTimer(record.timerSeconds)}<br />{new Date(record.createdAt).toLocaleDateString()}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
 
             <section className="admin-section create-admin-section" id="admin-access">
               <div className="section-heading"><div><p className="eyebrow">Access</p><h3>Add an administrator</h3></div><span className="muted small">Admin-only action</span></div>
