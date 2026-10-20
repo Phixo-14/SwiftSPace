@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api.js';
 import { firebaseAuth, firebaseConfigured } from '../firebase.js';
@@ -14,6 +14,7 @@ export default function VerifyEmail() {
   const [loading, setLoading] = useState(false);
   const [firebaseLinkHandled, setFirebaseLinkHandled] = useState(false);
   const [verifiedProfile, setVerifiedProfile] = useState(null);
+  const verificationCheckInProgress = useRef(false);
   const firebaseMode = firebaseConfigured;
   const navigate = useNavigate();
 
@@ -24,8 +25,10 @@ export default function VerifyEmail() {
 
   async function confirmExistingFirebaseVerification(user) {
     const requestedEmail = email.trim().toLowerCase();
-    if (!user || (requestedEmail && user.email?.toLowerCase() !== requestedEmail)) return false;
+    if (!user || verificationCheckInProgress.current
+      || (requestedEmail && user.email?.toLowerCase() !== requestedEmail)) return false;
 
+    verificationCheckInProgress.current = true;
     setLoading(true);
     setError('');
     let emailVerified = false;
@@ -61,6 +64,7 @@ export default function VerifyEmail() {
       return emailVerified;
     } finally {
       setLoading(false);
+      verificationCheckInProgress.current = false;
     }
   }
 
@@ -145,12 +149,29 @@ export default function VerifyEmail() {
 
   useEffect(() => {
     let unsubscribe;
+    let refreshTimer;
+    const refreshVerificationStatus = () => {
+      if (document.visibilityState === 'visible') {
+        void confirmExistingFirebaseVerification(firebaseAuth.currentUser);
+      }
+    };
+
     finishFirebaseVerification().then((handled) => {
       if (!handled && firebaseConfigured) {
-        unsubscribe = onAuthStateChanged(firebaseAuth, confirmExistingFirebaseVerification);
+        unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
+          if (user) void confirmExistingFirebaseVerification(user);
+        });
+        refreshTimer = window.setInterval(refreshVerificationStatus, 4000);
+        window.addEventListener('focus', refreshVerificationStatus);
+        document.addEventListener('visibilitychange', refreshVerificationStatus);
       }
     });
-    return () => unsubscribe?.();
+    return () => {
+      unsubscribe?.();
+      window.clearInterval(refreshTimer);
+      window.removeEventListener('focus', refreshVerificationStatus);
+      document.removeEventListener('visibilitychange', refreshVerificationStatus);
+    };
   }, []);
 
   async function handleSubmit(event) {

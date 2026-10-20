@@ -118,7 +118,11 @@ export default function Register() {
             termsAccepted,
           });
         }
-        if (!credential.user.emailVerified) await sendEmailVerification(credential.user);
+        if (!credential.user.emailVerified) {
+          const verificationContinueUrl = new URL('/verify-email', window.location.origin);
+          verificationContinueUrl.searchParams.set('email', email.trim());
+          await sendEmailVerification(credential.user, { url: verificationContinueUrl.toString() });
+        }
         localStorage.setItem('firebase_pending_username', fullName);
         localStorage.setItem('firebase_pending_email', email);
         localStorage.setItem('firebase_pending_role', adminSetupToken ? 'admin' : role);
