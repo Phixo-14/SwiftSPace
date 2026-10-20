@@ -1237,18 +1237,6 @@ export default function RoomEditor() {
     );
   }
 
-  function handleFurnitureDragStart(event, item) {
-    setDraggedItem(item);
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('application/json', JSON.stringify({
-      kind: 'move',
-      placementId: item.placementId,
-      gridX: item.gridX,
-      gridY: item.gridY,
-      catalogItemId: item.catalogItemId,
-    }));
-  }
-
   function handleCatalogDragStart(event, item) {
     const rotation = selectedItem?.rotation || 0;
     catalogDragRef.current = true;
@@ -1270,10 +1258,6 @@ export default function RoomEditor() {
   function handleCatalogDragEnd() {
     setDraggedItem(null);
     window.setTimeout(() => { catalogDragRef.current = false; }, 0);
-  }
-
-  function handleDragEnd() {
-    setDraggedItem(null);
   }
 
   function handleCellDrop(event, gridX, gridY) {
@@ -1451,6 +1435,34 @@ export default function RoomEditor() {
     setSelectedKey(null);
     setArmedItemId(null);
     setStatus('');
+  }
+
+  function beginPlacedFurnitureDrag(event, item) {
+    if (event.target.closest?.('.placed-item-resize-handle')) return;
+    if (armedItemId || (isDesigner && architecturalTool !== 'select')) return;
+
+    const svg = canvasWrapRef.current?.querySelector('.architectural-overlay, .room-boundary-overlay');
+    const pointerStart = getArchitecturalPoint(svg, event.clientX, event.clientY);
+    if (!svg || !pointerStart) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    architecturalDragRef.current = {
+      mode: 'move-furniture',
+      pointerId: event.pointerId,
+      item,
+      svg,
+      pointerStart,
+      gridX: item.gridX,
+      gridY: item.gridY,
+      draft: { gridX: item.gridX, gridY: item.gridY },
+    };
+    suppressGridClickRef.current = true;
+    setFurnitureMoveDraft({ placementId: item.placementId, gridX: item.gridX, gridY: item.gridY });
+    setSelectedKey(`${Math.floor(item.gridX)},${Math.floor(item.gridY)}`);
+    setSelectedArchitecturalElement(null);
+    setArmedItemId(null);
   }
 
   function beginArchitecturalElementDrag(event, kind, element) {
@@ -2817,8 +2829,10 @@ export default function RoomEditor() {
                     key={item.placementId || `${item.gridX},${item.gridY}-${item.catalogItemId}`}
                     role="button"
                     tabIndex={0}
-                    draggable
-                    onDragStart={(event) => handleFurnitureDragStart(event, item)}
+                    onPointerDown={(event) => beginPlacedFurnitureDrag(event, item)}
+                    onPointerMove={updateArchitecturalDrag}
+                    onPointerUp={finishArchitecturalDrag}
+                    onPointerCancel={cancelArchitecturalDrag}
                     style={{
                       '--item-color': item.customColor || catalogItem.defaultColor,
                       '--item-rotation': `${displayRotation}deg`,
@@ -2871,7 +2885,6 @@ export default function RoomEditor() {
                         setArmedItemId(null);
                       }
                     }}
-                    onDragEnd={handleDragEnd}
                     aria-label={`${catalogItem.name}, ${displayItem.size?.width || catalogItem.footprint.width} by ${displayItem.size?.length || catalogItem.footprint.length} grid units`}
                   >
                     <span className="placed-item-glyph">
