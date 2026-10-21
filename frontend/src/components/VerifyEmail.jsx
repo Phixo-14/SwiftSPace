@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api.js';
 import { firebaseAuth, firebaseConfigured } from '../firebase.js';
-import { applyActionCode, onAuthStateChanged, reload } from 'firebase/auth';
+import { applyActionCode, onAuthStateChanged, reload, sendEmailVerification } from 'firebase/auth';
 
 export default function VerifyEmail() {
   const location = useLocation();
@@ -217,6 +217,41 @@ export default function VerifyEmail() {
     }
   }
 
+  async function resendFirebaseVerification() {
+    setError('');
+    setMessage('');
+    const user = firebaseAuth?.currentUser;
+    if (!user || user.email?.toLowerCase() !== email.trim().toLowerCase()) {
+      setError('This account is not signed in here. Return to sign in with this email, then request a new verification email.');
+      return;
+    }
+    if (user.emailVerified) {
+      await confirmExistingFirebaseVerification(user);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const continueUrl = new URL('/verify-email', window.location.origin);
+      continueUrl.searchParams.set('email', user.email);
+      try {
+        await sendEmailVerification(user, { url: continueUrl.toString() });
+      } catch (verificationError) {
+        if (verificationError.code !== 'auth/unauthorized-continue-uri') throw verificationError;
+        await sendEmailVerification(user);
+        setMessage(`Verification email sent. Add ${window.location.hostname} to Firebase Authentication's authorized domains so the link can return to SwiftSpace.`);
+        return;
+      }
+      setMessage('A new verification email was sent. Check your inbox and spam folder.');
+    } catch (requestError) {
+      setError(requestError.code === 'auth/too-many-requests'
+        ? 'Firebase is temporarily limiting verification emails. Wait before requesting another one.'
+        : requestError.message || 'Could not resend the verification email.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="auth-shell">
       <div className="auth-card verification-card">
@@ -250,7 +285,10 @@ export default function VerifyEmail() {
         {error && <p className="form-error" role="alert">{error}</p>}
         {message && !verifiedProfile && <p className="form-success" role="status">{message}</p>}
         {!firebaseLinkHandled && !verifiedProfile && (firebaseMode
-          ? <button type="button" className="btn-link verification-signin" onClick={() => navigate(`/login?email=${encodeURIComponent(email)}`, { replace: true })}>Back to sign in</button>
+          ? <>
+              <button type="button" className="btn-link verification-signin" onClick={resendFirebaseVerification} disabled={loading}>Resend verification email</button>
+              <button type="button" className="btn-link verification-signin" onClick={() => navigate(`/login?email=${encodeURIComponent(email)}`, { replace: true })}>Back to sign in</button>
+            </>
           : <button type="button" className="btn-link" onClick={resendCode}>Resend code</button>)}
       </div>
     </div>

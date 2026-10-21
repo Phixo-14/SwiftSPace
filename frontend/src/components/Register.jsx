@@ -113,11 +113,22 @@ export default function Register() {
         }
 
         let credential;
+        let recoveringUnverifiedAccount = false;
         try {
           credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
         } catch (firebaseError) {
-          if (!adminSetupToken || firebaseError.code !== 'auth/email-already-in-use') throw firebaseError;
-          credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+          if (firebaseError.code !== 'auth/email-already-in-use') throw firebaseError;
+          if (adminSetupToken) {
+            credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+          } else {
+            try {
+              credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+            } catch {
+              throw firebaseError;
+            }
+            if (credential.user.emailVerified) throw firebaseError;
+            recoveringUnverifiedAccount = true;
+          }
         }
         await updateProfile(credential.user, { displayName: fullName });
         if (adminSetupToken) {
@@ -141,16 +152,37 @@ export default function Register() {
           try {
             await sendEmailVerification(credential.user, { url: verificationContinueUrl.toString() });
           } catch (verificationError) {
-            if (verificationError.code !== 'auth/unauthorized-continue-uri') throw verificationError;
-
-            // Still send the Firebase verification email so an unauthorized
-            // continue URL does not strand a successfully created account.
-            await sendEmailVerification(credential.user);
-            verificationMessage = `Verification email sent. Add ${window.location.hostname} to Firebase Authentication's authorized domains so verification links can return to SwiftSpace.`;
+            if (verificationError.code === 'auth/unauthorized-continue-uri') {
+              // Still send the Firebase verification email so an unauthorized
+              // continue URL does not strand a successfully created account.
+              try {
+                await sendEmailVerification(credential.user);
+              } catch (fallbackError) {
+                if (fallbackError.code === 'auth/too-many-requests') {
+                  navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
+                    state: { message: 'Your account was created, but Firebase is temporarily limiting verification emails. Wait a while, then use Resend verification email below.' },
+                  });
+                  return;
+                }
+                throw fallbackError;
+              }
+              verificationMessage = `Verification email sent. Add ${window.location.hostname} to Firebase Authentication's authorized domains so verification links can return to SwiftSpace.`;
+            } else if (verificationError.code === 'auth/too-many-requests') {
+              navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
+                state: { message: 'Your account was created, but Firebase is temporarily limiting verification emails. Wait a while, then use Resend verification email below.' },
+              });
+              return;
+            } else {
+              throw verificationError;
+            }
           }
         }
         navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
-          state: verificationMessage ? { message: verificationMessage } : undefined,
+          state: verificationMessage
+            ? { message: verificationMessage }
+            : recoveringUnverifiedAccount
+              ? { message: 'Your account was created earlier, but email verification is still pending. A new verification email has been sent.' }
+              : undefined,
         });
         return;
       }
