@@ -48,6 +48,7 @@ export default function Register() {
   const [checkingRegistration, setCheckingRegistration] = useState(true);
   const [setupAvailable, setSetupAvailable] = useState(Boolean(adminSetupToken));
   const [registrationStatusError, setRegistrationStatusError] = useState(false);
+  const [registrationStatusAttempt, setRegistrationStatusAttempt] = useState(0);
   const navigate = useNavigate();
   const passwordRequirements = [
     { label: '8–16 characters', met: password.length >= 8 && password.length <= 16 },
@@ -58,18 +59,26 @@ export default function Register() {
   ];
 
   useEffect(() => {
+    let active = true;
+    setCheckingRegistration(true);
+    setRegistrationStatusError(false);
     api.get('/auth/registration-status')
       .then(({ data }) => {
+        if (!active) return;
         setRegistrationOpen(data.registrationOpen);
         setSetupAvailable(data.adminSetupAvailable);
       })
       .catch(() => {
+        if (!active) return;
         setRegistrationOpen(false);
         setSetupAvailable(false);
         setRegistrationStatusError(true);
       })
-      .finally(() => setCheckingRegistration(false));
-  }, []);
+      .finally(() => {
+        if (active) setCheckingRegistration(false);
+      });
+    return () => { active = false; };
+  }, [registrationStatusAttempt]);
 
   function updateField(field, value) {
     const values = { username, email, password, confirmPassword, termsAccepted, [field]: value };
@@ -177,6 +186,7 @@ export default function Register() {
         'auth/weak-password': 'Firebase rejected this password. Use at least 8 characters.',
         'auth/invalid-email': 'Enter a valid email address.',
         'auth/unauthorized-continue-uri': 'Add this site domain to Firebase Authentication authorized domains.',
+        'auth/too-many-requests': 'Firebase temporarily blocked this sign-up request. This can happen even on the first try for this email if it detects too many requests from this device or network, or a project limit is reached. Wait before retrying. If an earlier attempt may have created the account, try signing in. If this continues, ask the Firebase project owner to check Authentication usage and limits.',
       };
       setError(details
         ? details.join(' ')
@@ -225,14 +235,18 @@ export default function Register() {
                 ? 'Create the client administrator account. This one-time setup link closes after it is used.'
                 : 'Start designing and save your room layouts in SwiftSpace.'}
           </p>
+          {!verificationApproved && !adminSetupToken && checkingRegistration && (
+            <p className="form-info" role="status">Checking whether account registration is available…</p>
+          )}
           {!verificationApproved && !adminSetupToken && !checkingRegistration && !registrationOpen && (
-            <p className="form-error" role="status">
+            <div className="form-error" role="status">
               {registrationStatusError
                 ? 'We could not check whether registration is available. Please refresh the page or try again later.'
                 : setupAvailable
                   ? 'The client administrator must complete the one-time setup before user registration opens.'
                   : 'Registration is currently unavailable. Please contact the site administrator.'}
-            </p>
+              {registrationStatusError && <button type="button" className="btn-link" onClick={() => setRegistrationStatusAttempt((attempt) => attempt + 1)}>Check again</button>}
+            </div>
           )}
           {!verificationApproved && adminSetupToken && !checkingRegistration && !setupAvailable && (
             <p className="form-error" role="alert">This one-time administrator setup link has already been used.</p>
@@ -246,7 +260,7 @@ export default function Register() {
               <Link className="btn-primary" to={`/login?email=${encodeURIComponent(email)}`}>Continue to sign in</Link>
             </div>
           )}
-          {!verificationApproved && !checkingRegistration && (adminSetupToken ? setupAvailable : registrationOpen) && (
+          {!verificationApproved && (adminSetupToken ? !checkingRegistration && setupAvailable : true) && (
           <form
             onSubmit={handleSubmit}
             onBlur={(event) => {
@@ -384,7 +398,11 @@ export default function Register() {
             </label>
             {touchedFields.termsAccepted && fieldErrors.termsAccepted && <p id="register-terms-error" className="field-error" role="alert">{fieldErrors.termsAccepted}</p>}
             {error && <p className="form-error">{error}</p>}
-            <button type="submit" className="btn-primary" disabled={loading || checkingRegistration}>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={loading || (adminSetupToken && checkingRegistration) || (!adminSetupToken && !checkingRegistration && !registrationOpen)}
+            >
               {loading ? 'Creating account…' : 'Create account'}
             </button>
           </form>
