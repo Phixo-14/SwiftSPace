@@ -120,17 +120,29 @@ export default function Register() {
             termsAccepted,
           });
         }
-        if (!credential.user.emailVerified) {
-          const verificationContinueUrl = new URL('/verify-email', window.location.origin);
-          verificationContinueUrl.searchParams.set('email', email.trim());
-          await sendEmailVerification(credential.user, { url: verificationContinueUrl.toString() });
-        }
         localStorage.setItem('firebase_pending_username', fullName);
         localStorage.setItem('firebase_pending_email', email);
         localStorage.setItem('firebase_pending_role', adminSetupToken ? 'admin' : role);
         localStorage.setItem('firebase_pending_terms_accepted', 'true');
         sessionStorage.setItem('firebase_pending_terms_accepted', 'true');
-        navigate(`/verify-email?email=${encodeURIComponent(email)}`);
+        let verificationMessage = '';
+        if (!credential.user.emailVerified) {
+          const verificationContinueUrl = new URL('/verify-email', window.location.origin);
+          verificationContinueUrl.searchParams.set('email', email.trim());
+          try {
+            await sendEmailVerification(credential.user, { url: verificationContinueUrl.toString() });
+          } catch (verificationError) {
+            if (verificationError.code !== 'auth/unauthorized-continue-uri') throw verificationError;
+
+            // Still send the Firebase verification email so an unauthorized
+            // continue URL does not strand a successfully created account.
+            await sendEmailVerification(credential.user);
+            verificationMessage = `Verification email sent. Add ${window.location.hostname} to Firebase Authentication's authorized domains so verification links can return to SwiftSpace.`;
+          }
+        }
+        navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
+          state: verificationMessage ? { message: verificationMessage } : undefined,
+        });
         return;
       }
       if (adminSetupToken) {

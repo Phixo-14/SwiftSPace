@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api.js';
 import { firebaseAuth, firebaseConfigured } from '../firebase.js';
 import { applyActionCode, onAuthStateChanged, reload } from 'firebase/auth';
 
 export default function VerifyEmail() {
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState(searchParams.get('email') || '');
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(location.state?.message || '');
   const [setupMessage, setSetupMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [firebaseLinkHandled, setFirebaseLinkHandled] = useState(false);
