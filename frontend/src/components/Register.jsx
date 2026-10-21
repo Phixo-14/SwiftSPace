@@ -47,6 +47,7 @@ export default function Register() {
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [checkingRegistration, setCheckingRegistration] = useState(true);
   const [setupAvailable, setSetupAvailable] = useState(Boolean(adminSetupToken));
+  const [registrationStatusError, setRegistrationStatusError] = useState(false);
   const navigate = useNavigate();
   const passwordRequirements = [
     { label: '8–16 characters', met: password.length >= 8 && password.length <= 16 },
@@ -65,6 +66,7 @@ export default function Register() {
       .catch(() => {
         setRegistrationOpen(false);
         setSetupAvailable(false);
+        setRegistrationStatusError(true);
       })
       .finally(() => setCheckingRegistration(false));
   }, []);
@@ -213,9 +215,11 @@ export default function Register() {
           </p>
           {!verificationApproved && !adminSetupToken && !checkingRegistration && !registrationOpen && (
             <p className="form-error" role="status">
-              {setupAvailable
-                ? 'The client administrator must complete the one-time setup before user registration opens.'
-                : 'This administrator setup link has already been used. User registration is now open.'}
+              {registrationStatusError
+                ? 'We could not check whether registration is available. Please refresh the page or try again later.'
+                : setupAvailable
+                  ? 'The client administrator must complete the one-time setup before user registration opens.'
+                  : 'Registration is currently unavailable. Please contact the site administrator.'}
             </p>
           )}
           {!verificationApproved && adminSetupToken && !checkingRegistration && !setupAvailable && (

@@ -42,7 +42,12 @@ async function getInitialAdminSetup() {
 
 async function registrationIsOpen() {
   const setup = await getInitialAdminSetup();
-  return setup?.status === 'complete';
+  if (setup?.status === 'complete') return true;
+
+  // Older installations may already have an admin account without the
+  // one-time setup marker. Treat that account as completed setup so public
+  // registration does not remain locked indefinitely.
+  return Boolean(await User.exists({ role: 'admin' }));
 }
 
 function hasValidInitialAdminToken(token) {
@@ -69,7 +74,10 @@ async function getFirebaseIdentity(idToken) {
 
 async function registrationStatus(req, res) {
   const complete = await registrationIsOpen();
-  res.json({ registrationOpen: complete, adminSetupAvailable: !complete });
+  res.json({
+    registrationOpen: complete,
+    adminSetupAvailable: !complete && Boolean(process.env.INITIAL_ADMIN_SETUP_TOKEN),
+  });
 }
 
 async function validateInitialAdminSetup(req, res) {
