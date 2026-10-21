@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext.jsx';
 import { firebaseAuth, firebaseConfigured } from '../firebase.js';
 import { reload, sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
 import PasswordInput from './PasswordInput.jsx';
+import BrandLogo from './BrandLogo.jsx';
 
 export default function Login() {
   const [searchParams] = useSearchParams();
@@ -166,30 +167,11 @@ export default function Login() {
     <div className="auth-shell">
       <div className="auth-layout">
         <section className="auth-preview" aria-hidden="true">
-          <div className="auth-preview-brand">
-            <span className="auth-preview-mark">+</span>
-            <div>
-              <p className="eyebrow">SwiftSpace</p>
-              <p>2D room planning studio</p>
-            </div>
-          </div>
-          <div className="mini-room-stage">
-            <div className="mini-room">
-              {Array.from({ length: 30 }, (_, index) => <span className="mini-room-cell" key={index} />)}
-              <span className="mini-furniture mini-bed" />
-              <span className="mini-furniture mini-desk" />
-              <span className="mini-furniture mini-chair" />
-              <span className="mini-furniture mini-plant" />
-            </div>
-          </div>
-          <div className="auth-preview-note">
-            <span className="preview-dot" />
-            Place furniture. Shape the room.
-          </div>
+          <BrandLogo variant="full" className="auth-preview-logo" />
         </section>
 
         <div className="auth-card">
-          <p className="eyebrow">SwiftSpace</p>
+          <BrandLogo variant="wordmark" className="auth-card-brand" />
           <h1>Sign in</h1>
           <form onSubmit={handleSubmit} noValidate>
             <label>

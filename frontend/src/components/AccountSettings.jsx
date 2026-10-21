@@ -5,6 +5,7 @@ import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 import { firebaseAuth } from '../firebase.js';
 import PasswordInput from './PasswordInput.jsx';
+import BrandLogo from './BrandLogo.jsx';
 
 export default function AccountSettings() {
   const { user, logout } = useAuth();
@@ -51,8 +52,7 @@ export default function AccountSettings() {
     <div className="page dashboard-page account-page">
       <aside className="admin-hover-sidebar" aria-label="Workspace navigation">
         <div className="admin-sidebar-brand">
-          <span className="admin-brand-mark">+</span>
-          <span className="admin-sidebar-label">SwiftSpace</span>
+          <BrandLogo variant="full" className="admin-sidebar-full-logo" />
         </div>
         <nav className="admin-sidebar-nav">
           <Link to="/"><span className="admin-nav-icon">⌂</span><span className="admin-sidebar-label">My layouts</span></Link>

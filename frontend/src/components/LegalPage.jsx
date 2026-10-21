@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom';
+import BrandLogo from './BrandLogo.jsx';
 
 export default function LegalPage({ title, intro, sections }) {
   return (
     <div className="legal-page-shell">
       <div className="legal-page-card">
-        <p className="eyebrow">SwiftSpace</p>
+        <BrandLogo variant="wordmark" className="auth-card-brand" />
         <h1>{title}</h1>
         {intro && <p className="legal-page-intro">{intro}</p>}
 

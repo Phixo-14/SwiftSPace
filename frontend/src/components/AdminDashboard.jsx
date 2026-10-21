@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 import PasswordInput from './PasswordInput.jsx';
+import BrandLogo from './BrandLogo.jsx';
 
 function getPredictiveAnalysis(overview) {
   const monthlyRooms = overview?.monthlyRooms || [];
@@ -198,8 +199,7 @@ export default function AdminDashboard() {
     <div className="page admin-page">
       <aside className="admin-hover-sidebar" aria-label="Admin navigation">
         <div className="admin-sidebar-brand">
-          <span className="admin-brand-mark">+</span>
-          <span className="admin-sidebar-label">SwiftSpace</span>
+          <BrandLogo variant="full" className="admin-sidebar-full-logo" />
         </div>
         <nav className="admin-sidebar-nav">
           <a href="#admin-overview"><span className="admin-nav-icon">⌂</span><span className="admin-sidebar-label">Overview</span></a>
@@ -230,7 +230,7 @@ export default function AdminDashboard() {
       </aside>
       <header className="topbar">
         <div className="admin-brand">
-          <span className="admin-brand-mark">+</span>
+          <BrandLogo className="admin-brand-mark" />
           <div>
             <p className="eyebrow">SwiftSpace / Control room</p>
             <h1>Admin dashboard</h1>

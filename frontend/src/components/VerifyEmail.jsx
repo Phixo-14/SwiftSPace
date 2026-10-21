@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api.js';
 import { firebaseAuth, firebaseConfigured } from '../firebase.js';
 import { applyActionCode, onAuthStateChanged, reload, sendEmailVerification } from 'firebase/auth';
+import BrandLogo from './BrandLogo.jsx';
 
 export default function VerifyEmail() {
   const location = useLocation();
@@ -280,7 +281,7 @@ export default function VerifyEmail() {
   return (
     <div className="auth-shell">
       <div className="auth-card verification-card">
-        <p className="eyebrow">SwiftSpace</p>
+        <BrandLogo variant="wordmark" className="auth-card-brand" />
         <h1>{verifiedProfile ? 'Email verified' : 'Verify your email'}</h1>
         <p className="auth-sub">
           {verifiedProfile

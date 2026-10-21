@@ -19,7 +19,9 @@ const publicRegisterSchema = registerSchema.keys({
 
 const loginSchema = Joi.object({
   email: Joi.string().email({ tlds: false }).required(),
-  password: Joi.string().min(8).max(72).pattern(/[^A-Za-z0-9]/).required(),
+  // Login should authenticate the supplied password, not apply registration
+  // complexity rules. Otherwise a short/wrong password appears as a validation error.
+  password: Joi.string().min(1).max(72).required(),
 });
 
 const mfaSchema = Joi.object({

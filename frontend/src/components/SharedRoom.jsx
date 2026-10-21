@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import api from '../api.js';
 import ItemGlyph from './ItemGlyph.jsx';
+import BrandLogo from './BrandLogo.jsx';
 
 function createFullFloor(dimensions) {
   return Array.from({ length: dimensions.width * dimensions.length }, (_, index) => ({
@@ -22,7 +23,7 @@ export default function SharedRoom() {
   }, [token]);
 
   if (error) {
-    return <main className="shared-room-page"><section className="shared-room-message"><p className="eyebrow">SwiftSpace</p><h1>Shared room unavailable</h1><p className="muted">{error}</p><Link className="btn-primary" to="/login">Sign in</Link></section></main>;
+    return <main className="shared-room-page"><section className="shared-room-message"><BrandLogo variant="wordmark" className="auth-card-brand" /><h1>Shared room unavailable</h1><p className="muted">{error}</p><Link className="btn-primary" to="/login">Sign in</Link></section></main>;
   }
 
   if (!room) {

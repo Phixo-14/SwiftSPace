@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
+import BrandLogo from './BrandLogo.jsx';
 
 export default function Dashboard() {
   const [rooms, setRooms] = useState([]);
@@ -222,8 +223,7 @@ export default function Dashboard() {
     <div className="page dashboard-page">
       <aside className="admin-hover-sidebar" aria-label="Workspace navigation">
         <div className="admin-sidebar-brand">
-          <span className="admin-brand-mark">+</span>
-          <span className="admin-sidebar-label">SwiftSpace</span>
+          <BrandLogo variant="full" className="admin-sidebar-full-logo" />
         </div>
         <nav className="admin-sidebar-nav">
           <a href="#dashboard-overview"><span className="admin-nav-icon">⌂</span><span className="admin-sidebar-label">{isDesigner ? 'Projects' : 'My layouts'}</span></a>
