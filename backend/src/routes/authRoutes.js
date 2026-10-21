@@ -1,14 +1,15 @@
 const express = require('express');
 const Joi = require('joi');
-const { registrationStatus, validateInitialAdminSetup, setupInitialAdmin, register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, createAdmin, banUser, verifyEmail, resendVerification, resendFirebaseVerificationLink, getAdminOverview, startMfaSetup, verifyMfaSetup, disableMfa, verifyMfaLogin } = require('../controllers/authController');
+const { registrationStatus, saveFirebaseRegistrationIntent, validateInitialAdminSetup, setupInitialAdmin, register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, createAdmin, banUser, verifyEmail, resendVerification, resendFirebaseVerificationLink, getAdminOverview, startMfaSetup, verifyMfaSetup, disableMfa, verifyMfaLogin } = require('../controllers/authController');
 const { getSystemLogs } = require('../controllers/systemLogController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { validateBody, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, firebaseVerificationLinkSchema, firebaseSyncSchema, initialAdminSetupSchema, initialAdminSetupTokenSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, mfaSchema } = require('../middleware/validators');
+const { validateBody, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, firebaseVerificationLinkSchema, firebaseSyncSchema, firebaseRegistrationIntentSchema, initialAdminSetupSchema, initialAdminSetupTokenSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, mfaSchema } = require('../middleware/validators');
 const { loginLimiter, verificationEmailLimiter } = require('../middleware/rateLimiters');
 
 const router = express.Router();
 
 router.get('/registration-status', registrationStatus);
+router.post('/firebase-registration-intent', validateBody(firebaseRegistrationIntentSchema), saveFirebaseRegistrationIntent);
 router.post('/initial-admin-setup/validate', validateBody(initialAdminSetupTokenSchema), validateInitialAdminSetup);
 router.post('/initial-admin-setup', validateBody(initialAdminSetupSchema), setupInitialAdmin);
 router.post('/register', validateBody(publicRegisterSchema), register);

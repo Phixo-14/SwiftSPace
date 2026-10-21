@@ -131,6 +131,11 @@ export default function Register() {
           }
         }
         await updateProfile(credential.user, { displayName: fullName });
+        localStorage.setItem('firebase_pending_username', fullName);
+        localStorage.setItem('firebase_pending_email', email);
+        localStorage.setItem('firebase_pending_role', adminSetupToken ? 'admin' : role);
+        localStorage.setItem('firebase_pending_terms_accepted', 'true');
+        sessionStorage.setItem('firebase_pending_terms_accepted', 'true');
         if (adminSetupToken) {
           await api.post('/auth/initial-admin-setup', {
             setupToken: adminSetupToken,
@@ -139,12 +144,14 @@ export default function Register() {
             email,
             termsAccepted,
           });
+        } else {
+          await api.post('/auth/firebase-registration-intent', {
+            idToken: await credential.user.getIdToken(),
+            username: fullName,
+            role,
+            termsAccepted,
+          });
         }
-        localStorage.setItem('firebase_pending_username', fullName);
-        localStorage.setItem('firebase_pending_email', email);
-        localStorage.setItem('firebase_pending_role', adminSetupToken ? 'admin' : role);
-        localStorage.setItem('firebase_pending_terms_accepted', 'true');
-        sessionStorage.setItem('firebase_pending_terms_accepted', 'true');
         let verificationMessage = '';
         if (!credential.user.emailVerified) {
           const verificationContinueUrl = new URL('/verify-email', window.location.origin);

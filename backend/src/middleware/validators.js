@@ -54,6 +54,13 @@ const firebaseSyncSchema = Joi.object({
   termsAccepted: Joi.boolean(),
 });
 
+const firebaseRegistrationIntentSchema = Joi.object({
+  idToken: Joi.string().required(),
+  username: Joi.string().trim().min(3).max(50).pattern(/^\p{L}+(?: \p{L}+)+$/u).required(),
+  role: Joi.string().valid('homeowner', 'interior-designer').default('homeowner'),
+  termsAccepted: Joi.boolean().valid(true).required(),
+});
+
 const initialAdminSetupSchema = Joi.object({
   setupToken: Joi.string().min(32).required(),
   username: Joi.string().trim().min(3).max(50).pattern(/^\p{L}+(?: \p{L}+)+$/u).required(),
@@ -178,4 +185,4 @@ function validateBody(schema) {
   };
 }
 
-module.exports = { registerSchema, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, firebaseVerificationLinkSchema, projectFolderSchema, roomFolderSchema, firebaseSyncSchema, initialAdminSetupSchema, initialAdminSetupTokenSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, roomSchema, roomVersionSchema, validateBody };
+module.exports = { registerSchema, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, firebaseVerificationLinkSchema, projectFolderSchema, roomFolderSchema, firebaseSyncSchema, firebaseRegistrationIntentSchema, initialAdminSetupSchema, initialAdminSetupTokenSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, roomSchema, roomVersionSchema, validateBody };

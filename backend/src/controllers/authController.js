@@ -80,6 +80,58 @@ async function registrationStatus(req, res) {
   });
 }
 
+// POST /api/auth/firebase-registration-intent
+// Persist profile details and consent immediately after Firebase signup so
+// verification links can be opened in another browser without losing consent.
+async function saveFirebaseRegistrationIntent(req, res) {
+  if (!(await registrationIsOpen())) {
+    return res.status(403).json({ message: 'The client administrator must complete the one-time setup before registration opens.' });
+  }
+
+  let identity;
+  try {
+    identity = await getFirebaseIdentity(req.body.idToken);
+  } catch {
+    return res.status(401).json({ message: 'Invalid Firebase authentication token.' });
+  }
+  if (!identity.uid || !identity.email) {
+    return res.status(400).json({ message: 'The Firebase account must include an email address.' });
+  }
+
+  const cleanEmail = sanitizeEmail(identity.email);
+  const cleanUsername = normalizeUsername(req.body.username);
+  let user = await User.findOne({ $or: [{ firebaseUid: identity.uid }, { email: cleanEmail }] });
+  if (user?.role === 'admin') {
+    return res.status(409).json({ message: 'This account is already registered as an administrator.' });
+  }
+  if (user?.firebaseUid && user.firebaseUid !== identity.uid) {
+    return res.status(409).json({ message: 'This email is linked to a different Firebase account.' });
+  }
+
+  if (!user) {
+    user = new User({
+      username: cleanUsername,
+      email: cleanEmail,
+      firebaseUid: identity.uid,
+      passwordHash: crypto.randomBytes(32).toString('hex'),
+      role: req.body.role,
+      emailVerified: Boolean(identity.email_verified),
+      termsAcceptedAt: new Date(),
+    });
+  } else {
+    user.firebaseUid = identity.uid;
+    if (!user.emailVerified) {
+      user.username = cleanUsername;
+      user.role = req.body.role;
+    }
+    user.emailVerified = user.emailVerified || Boolean(identity.email_verified);
+    user.termsAcceptedAt = user.termsAcceptedAt || new Date();
+  }
+
+  await user.save();
+  return res.json({ message: 'Registration details saved. Verify your email to continue.' });
+}
+
 async function validateInitialAdminSetup(req, res) {
   if (!hasValidInitialAdminToken(req.body.setupToken)) {
     return res.status(403).json({ message: 'This administrator setup link is invalid or has already been used.' });
@@ -1032,6 +1084,7 @@ async function getAdminOverview(req, res) {
 
 module.exports = {
   registrationStatus,
+  saveFirebaseRegistrationIntent,
   validateInitialAdminSetup,
   setupInitialAdmin,
   register,

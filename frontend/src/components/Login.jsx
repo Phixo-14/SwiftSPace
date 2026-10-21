@@ -14,6 +14,8 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [resetMessage, setResetMessage] = useState('');
   const [retryAfter, setRetryAfter] = useState(0);
+  const [needsTermsAcceptance, setNeedsTermsAcceptance] = useState(false);
+  const [termsAcceptedForSetup, setTermsAcceptedForSetup] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -30,6 +32,10 @@ export default function Login() {
     }
     if (!password) {
       setError('Password is required.');
+      return;
+    }
+    if (needsTermsAcceptance && !termsAcceptedForSetup) {
+      setError('Accept the Terms of Service and Privacy Policy to finish setting up this account.');
       return;
     }
     setLoading(true);
@@ -52,10 +58,14 @@ export default function Login() {
           ? nameWords.join(' ')
           : `${nameWords[0] || 'User'} User`;
         const termsAccepted = localStorage.getItem('firebase_pending_terms_accepted') === 'true'
-          || sessionStorage.getItem('firebase_pending_terms_accepted') === 'true';
+          || sessionStorage.getItem('firebase_pending_terms_accepted') === 'true'
+          || termsAcceptedForSetup;
+        const pendingRole = localStorage.getItem('firebase_pending_role')
+          || sessionStorage.getItem('firebase_pending_role');
         const { data } = await api.post('/auth/firebase-sync', {
           idToken: firebaseToken,
           username,
+          ...(pendingRole ? { role: pendingRole } : {}),
           termsAccepted,
         });
         localStorage.removeItem('firebase_pending_terms_accepted');
@@ -108,6 +118,11 @@ export default function Login() {
         setRetryAfter(retrySeconds || 900);
       }
       const validationDetails = err.response?.data?.details;
+      if (err.response?.data?.message === 'You must accept the Terms of Service and Privacy Policy to create an account.') {
+        setNeedsTermsAcceptance(true);
+        setError('Please accept the Terms of Service and Privacy Policy once to finish setting up this account.');
+        return;
+      }
       const errorMessage = err.code === 'ECONNABORTED'
         ? 'The server took too long to respond. Please try again.'
         : validationDetails?.length
@@ -195,6 +210,16 @@ export default function Login() {
                 required
               />
             </label>
+            {needsTermsAcceptance && (
+              <label className="registration-consent">
+                <input
+                  type="checkbox"
+                  checked={termsAcceptedForSetup}
+                  onChange={(event) => setTermsAcceptedForSetup(event.target.checked)}
+                />
+                <span>I agree to the <Link to="/terms">Terms of Service</Link> and <Link to="/privacy">Privacy Policy</Link>.</span>
+              </label>
+            )}
             {error && <p className="form-error" role="alert">{error}</p>}
             {resetMessage && <p className="form-success">{resetMessage}</p>}
             <button type="submit" className="btn-primary" disabled={loading || retryAfter > 0}>
