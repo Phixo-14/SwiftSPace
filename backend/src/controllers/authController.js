@@ -855,6 +855,66 @@ async function resendVerification(req, res) {
 }
 
 // PATCH /api/auth/users/:id/ban — requires an existing admin token.
+// POST /api/auth/firebase/resend-verification-link
+// Generate a Firebase action link and send it through the app's configured
+// email provider when Firebase's client-side email delivery is throttled.
+async function resendFirebaseVerificationLink(req, res) {
+  const firebase = getFirebaseAdmin();
+  if (!firebase) {
+    return res.status(503).json({ message: 'Verification email fallback is not configured. Add the Firebase Admin service account to the backend environment.' });
+  }
+
+  let identity;
+  try {
+    identity = await firebase.auth().verifyIdToken(req.body.idToken);
+  } catch {
+    return res.status(401).json({ message: 'Your sign-in session expired. Sign in again and retry.' });
+  }
+  if (!identity.email) return res.status(400).json({ message: 'The signed-in Firebase account has no email address.' });
+  if (identity.email_verified) return res.json({ message: 'This email is already verified.' });
+
+  const resendConfigured = process.env.RESEND_API_KEY
+    && !process.env.RESEND_API_KEY.startsWith('replace-with-');
+  if (!resendConfigured && !mailTransport) {
+    return res.status(503).json({ message: 'Email delivery is not configured on the backend. Set up Resend or SMTP, then retry.' });
+  }
+
+  try {
+    const continueUrl = new URL('/verify-email', process.env.CLIENT_ORIGIN || 'https://swiftspace-web.onrender.com');
+    continueUrl.searchParams.set('email', identity.email);
+    let verificationLink;
+    try {
+      verificationLink = await firebase.auth().generateEmailVerificationLink(identity.email, {
+        url: continueUrl.toString(),
+        handleCodeInApp: true,
+      });
+    } catch {
+      verificationLink = await firebase.auth().generateEmailVerificationLink(identity.email);
+    }
+
+    const emailMessage = {
+      from: process.env.RESEND_FROM || process.env.SMTP_FROM,
+      to: identity.email,
+      subject: 'Verify your SwiftSpace email',
+      text: `Use this link to verify your SwiftSpace email address:\n\n${verificationLink}\n\nIf you did not create this account, you can ignore this message.`,
+    };
+    if (resendConfigured) {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailMessage),
+      });
+      if (!response.ok) throw new Error(`Email provider returned HTTP ${response.status}.`);
+    } else {
+      await mailTransport.sendMail(emailMessage);
+    }
+    return res.json({ message: 'A verification link was sent through SwiftSpace email delivery.' });
+  } catch (error) {
+    console.error(`Could not deliver Firebase verification link: ${error.message}`);
+    return res.status(502).json({ message: 'SwiftSpace could not send the verification email. Check the backend email provider settings.' });
+  }
+}
+
 async function banUser(req, res) {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ message: 'Invalid user id.' });
@@ -975,6 +1035,7 @@ module.exports = {
   login,
   adminLogin,
   firebaseSync,
+  resendFirebaseVerificationLink,
   deleteFirebaseUser,
   deleteAccount,
   syncFirebaseUsers,

@@ -1,10 +1,10 @@
 const express = require('express');
 const Joi = require('joi');
-const { registrationStatus, validateInitialAdminSetup, setupInitialAdmin, register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, createAdmin, banUser, verifyEmail, resendVerification, getAdminOverview, startMfaSetup, verifyMfaSetup, disableMfa, verifyMfaLogin } = require('../controllers/authController');
+const { registrationStatus, validateInitialAdminSetup, setupInitialAdmin, register, login, adminLogin, firebaseSync, deleteFirebaseUser, deleteAccount, syncFirebaseUsers, createAdmin, banUser, verifyEmail, resendVerification, resendFirebaseVerificationLink, getAdminOverview, startMfaSetup, verifyMfaSetup, disableMfa, verifyMfaLogin } = require('../controllers/authController');
 const { getSystemLogs } = require('../controllers/systemLogController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { validateBody, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, firebaseSyncSchema, initialAdminSetupSchema, initialAdminSetupTokenSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, mfaSchema } = require('../middleware/validators');
-const { loginLimiter } = require('../middleware/rateLimiters');
+const { validateBody, publicRegisterSchema, loginSchema, verificationSchema, emailSchema, firebaseVerificationLinkSchema, firebaseSyncSchema, initialAdminSetupSchema, initialAdminSetupTokenSchema, firebaseDeleteSchema, accountDeleteSchema, adminSchema, mfaSchema } = require('../middleware/validators');
+const { loginLimiter, verificationEmailLimiter } = require('../middleware/rateLimiters');
 
 const router = express.Router();
 
@@ -16,6 +16,7 @@ router.post('/login', loginLimiter, validateBody(loginSchema), login);
 router.post('/login/mfa', loginLimiter, validateBody(loginSchema.keys({ code: Joi.string().pattern(/^\d{6}$/).required() })), verifyMfaLogin);
 router.post('/admin-login', loginLimiter, validateBody(loginSchema), adminLogin);
 router.post('/firebase-sync', validateBody(firebaseSyncSchema), firebaseSync);
+router.post('/firebase/resend-verification-link', verificationEmailLimiter, validateBody(firebaseVerificationLinkSchema), resendFirebaseVerificationLink);
 router.post('/firebase-user-deleted', validateBody(firebaseDeleteSchema), deleteFirebaseUser);
 router.get('/me', requireAuth, (req, res) => res.json({ user: req.user }));
 router.delete('/account', requireAuth, validateBody(accountDeleteSchema), deleteAccount);

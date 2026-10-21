@@ -159,8 +159,18 @@ export default function Register() {
                 await sendEmailVerification(credential.user);
               } catch (fallbackError) {
                 if (fallbackError.code === 'auth/too-many-requests') {
+                  let recoveryMessage = 'Your account was created, but Firebase is temporarily limiting verification emails.';
+                  try {
+                    const { data } = await api.post('/auth/firebase/resend-verification-link', {
+                      idToken: await credential.user.getIdToken(true),
+                    });
+                    recoveryMessage = data.message;
+                  } catch (serverFallbackError) {
+                    recoveryMessage = serverFallbackError.response?.data?.message
+                      || `${recoveryMessage} Wait a while, then use Resend verification email below.`;
+                  }
                   navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
-                    state: { message: 'Your account was created, but Firebase is temporarily limiting verification emails. Wait a while, then use Resend verification email below.' },
+                    state: { message: recoveryMessage },
                   });
                   return;
                 }
@@ -168,8 +178,18 @@ export default function Register() {
               }
               verificationMessage = `Verification email sent. Add ${window.location.hostname} to Firebase Authentication's authorized domains so verification links can return to SwiftSpace.`;
             } else if (verificationError.code === 'auth/too-many-requests') {
+              let recoveryMessage = 'Your account was created, but Firebase is temporarily limiting verification emails.';
+              try {
+                const { data } = await api.post('/auth/firebase/resend-verification-link', {
+                  idToken: await credential.user.getIdToken(true),
+                });
+                recoveryMessage = data.message;
+              } catch (fallbackError) {
+                recoveryMessage = fallbackError.response?.data?.message
+                  || `${recoveryMessage} Wait a while, then use Resend verification email below.`;
+              }
               navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
-                state: { message: 'Your account was created, but Firebase is temporarily limiting verification emails. Wait a while, then use Resend verification email below.' },
+                state: { message: recoveryMessage },
               });
               return;
             } else {

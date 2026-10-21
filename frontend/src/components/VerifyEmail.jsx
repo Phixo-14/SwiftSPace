@@ -244,9 +244,20 @@ export default function VerifyEmail() {
       }
       setMessage('A new verification email was sent. Check your inbox and spam folder.');
     } catch (requestError) {
-      setError(requestError.code === 'auth/too-many-requests'
-        ? 'Firebase is temporarily limiting verification emails. Wait before requesting another one.'
-        : requestError.message || 'Could not resend the verification email.');
+      if (requestError.code === 'auth/too-many-requests') {
+        try {
+          const { data } = await api.post('/auth/firebase/resend-verification-link', {
+            idToken: await user.getIdToken(true),
+          });
+          setMessage(data.message);
+          return;
+        } catch (fallbackError) {
+          setError(fallbackError.response?.data?.message
+            || 'Firebase is temporarily limiting verification emails. Wait before requesting another one.');
+        }
+      } else {
+        setError(requestError.message || 'Could not resend the verification email.');
+      }
     } finally {
       setLoading(false);
     }
