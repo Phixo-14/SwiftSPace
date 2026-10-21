@@ -17,6 +17,7 @@ export default function VerifyEmail() {
   const [verifiedProfile, setVerifiedProfile] = useState(null);
   const verificationCheckInProgress = useRef(false);
   const firebaseMode = firebaseConfigured;
+  const verificationReturned = searchParams.get('verification') === 'success';
   const navigate = useNavigate();
 
   function getPendingValue(key) {
@@ -158,6 +159,19 @@ export default function VerifyEmail() {
     };
 
     finishFirebaseVerification().then((handled) => {
+      if (!handled && verificationReturned) {
+        const returnedProfile = {
+          email: email || getPendingValue('email') || '',
+          username: getPendingValue('username') || email.split('@')[0],
+          role: getPendingValue('role') || 'homeowner',
+        };
+        setVerifiedProfile(returnedProfile);
+        setMessage('Your email has been successfully verified. You can now sign in.');
+        if (firebaseAuth?.currentUser) {
+          void confirmExistingFirebaseVerification(firebaseAuth.currentUser);
+        }
+        return;
+      }
       if (!handled && firebaseConfigured) {
         unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
           if (user) void confirmExistingFirebaseVerification(user);

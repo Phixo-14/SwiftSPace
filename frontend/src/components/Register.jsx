@@ -149,6 +149,10 @@ export default function Register() {
         if (!credential.user.emailVerified) {
           const verificationContinueUrl = new URL('/verify-email', window.location.origin);
           verificationContinueUrl.searchParams.set('email', email.trim());
+          // Firebase consumes the action code on its hosted handler, then returns
+          // to this URL without the oobCode. Mark that successful return so the
+          // verification page can show confirmation even in a fresh browser tab.
+          verificationContinueUrl.searchParams.set('verification', 'success');
           try {
             await sendEmailVerification(credential.user, { url: verificationContinueUrl.toString() });
           } catch (verificationError) {

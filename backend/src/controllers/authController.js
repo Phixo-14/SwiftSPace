@@ -882,6 +882,9 @@ async function resendFirebaseVerificationLink(req, res) {
   try {
     const continueUrl = new URL('/verify-email', process.env.CLIENT_ORIGIN || 'https://swiftspace-web.onrender.com');
     continueUrl.searchParams.set('email', identity.email);
+    // Firebase's hosted action handler consumes the code before redirecting to
+    // the continue URL, so the app needs a marker to render the success state.
+    continueUrl.searchParams.set('verification', 'success');
     let verificationLink;
     try {
       verificationLink = await firebase.auth().generateEmailVerificationLink(identity.email, {
