@@ -3,7 +3,6 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
 const connectDB = require('./src/config/db');
 const { syncFirebaseUsersFromFirebase } = require('./src/controllers/authController');
@@ -59,17 +58,12 @@ app.use(rejectMongoOperators);
 app.use(morgan('dev'));
 app.use('/api', systemLoggingMiddleware);
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 20,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { message: 'Too many authentication attempts. Try again later.' },
-});
-
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
-app.use('/api/auth', authLimiter, authRoutes);
+// Rate limits are applied to specific sign-in and verification routes inside
+// authRoutes. A shared limiter here also counted dashboard/API reads as auth
+// attempts and could lock every user behind the same proxy out of the app.
+app.use('/api/auth', authRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/rooms', roomRoutes);
 app.get('/api/admin/health', requireAuth, requireAdmin, (req, res) => {

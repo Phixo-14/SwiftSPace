@@ -85,7 +85,6 @@ export default function AdminDashboard() {
   const [banningUserId, setBanningUserId] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [expandedOverlapUser, setExpandedOverlapUser] = useState(null);
   const [showSystemLogs, setShowSystemLogs] = useState(false);
   const [systemLogs, setSystemLogs] = useState([]);
   const [systemLogsLoading, setSystemLogsLoading] = useState(false);
@@ -180,12 +179,6 @@ export default function AdminDashboard() {
     }
   }
 
-  const overlapGroups = (overview?.recentOverlaps || []).reduce((groups, record) => {
-    const username = record.username || 'Unknown user';
-    if (!groups[username]) groups[username] = [];
-    groups[username].push(record);
-    return groups;
-  }, {}) || {};
   const sortedUsers = [...(overview?.users || [])].sort((first, second) => {
     if (first.role === second.role) return 0;
     return first.role === 'admin' ? -1 : 1;
@@ -331,43 +324,29 @@ export default function AdminDashboard() {
 
             <section className="admin-section overlap-activity-section" id="admin-overlaps">
               <div className="section-heading">
-                <div><p className="eyebrow">Quality signals</p><h3>Recent overlap attempts</h3></div>
+                <div><p className="eyebrow">Quality signals</p><h3>Overlap attempts · all users</h3></div>
                 <span className="section-count">{overview.stats.overlaps}</span>
               </div>
               {overview.recentOverlaps.length === 0 ? (
                 <p className="muted">No overlap attempts have been recorded.</p>
               ) : (
-                <div className="admin-overlap-list">
-                  {Object.entries(overlapGroups).map(([username, records]) => {
-                    const isExpanded = expandedOverlapUser === username;
-                    return (
-                      <div className="admin-overlap-group" key={username}>
-                        <button
-                          className="admin-overlap-row"
-                          type="button"
-                          aria-expanded={isExpanded}
-                          onClick={() => setExpandedOverlapUser(isExpanded ? null : username)}
-                        >
-                          <span className="overlap-signal">!</span>
-                          <span className="admin-overlap-details">
-                            <strong>{username}</strong>
-                            <small>{records.length} overlap error{records.length === 1 ? '' : 's'}</small>
-                          </span>
-                          <span className="overlap-expand" aria-hidden="true">{isExpanded ? '−' : '+'}</span>
-                        </button>
-                        {isExpanded && (
-                          <div className="admin-overlap-errors">
-                            {records.map((record) => (
-                              <div className="admin-overlap-error" key={record._id}>
-                                <span>- overlap ({record.catalogItemId?.name || 'Furniture'})</span>
-                                <span className="admin-overlap-meta mono">{record.roomName} · ({record.gridX}, {record.gridY}) · {record.rotation}°<br />{new Date(record.occurredAt).toLocaleString()}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                <div className="admin-overlap-list" role="list" aria-label="All overlap attempts">
+                  {overview.recentOverlaps.map((record) => (
+                    <article className="admin-overlap-event" key={record._id} role="listitem">
+                      <div className="admin-overlap-event-user">
+                        <span className="overlap-signal" aria-hidden="true">!</span>
+                        <span className="admin-overlap-details">
+                          <strong>{record.username || 'Unknown user'}</strong>
+                          <small>{record.userEmail || 'Account unavailable'} · {new Date(record.occurredAt).toLocaleString()}</small>
+                        </span>
                       </div>
-                    );
-                  })}
+                      <div className="admin-overlap-event-description">
+                        <strong>{record.catalogItemId?.name || 'Furniture'}</strong>
+                        <span>{record.reason || 'Furniture placement overlapped.'}</span>
+                        <small className="mono">{record.roomName} · ({record.gridX}, {record.gridY}) · {record.rotation}°</small>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               )}
             </section>

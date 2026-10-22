@@ -1305,40 +1305,19 @@ a {
 
 .admin-overlap-list {
   display: grid;
-  gap: 0.3rem;
+  max-height: 480px;
+  overflow-y: auto;
+  gap: 0.45rem;
+  padding-right: 0.25rem;
 }
 
-.admin-overlap-row {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  gap: 0.75rem;
-  min-height: 58px;
-  padding: 0.55rem 0.65rem;
-  border-top: none;
-  border-right: none;
-  border-left: none;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  border-bottom: 1px solid rgba(65, 109, 91, 0.35);
-}
-
-.admin-overlap-row:last-child {
-  border-bottom: none;
-}
-
-.admin-overlap-row:hover {
-  background: rgba(130, 214, 168, 0.06);
-}
-
-.admin-overlap-group {
-  border-bottom: 1px solid rgba(65, 109, 91, 0.35);
-}
-
-.admin-overlap-group:last-child {
-  border-bottom: none;
+.admin-overlap-event {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(65, 109, 91, 0.4);
+  border-radius: 7px;
+  background: rgba(130, 214, 168, 0.035);
 }
 
 .overlap-signal {
@@ -1379,39 +1358,35 @@ a {
   font-size: 11px;
 }
 
-.admin-overlap-meta {
-  flex: 0 0 auto;
-  text-align: right;
-}
-
-.overlap-expand {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  color: var(--accent);
-  font-size: 16px;
-}
-
-.admin-overlap-errors {
-  display: grid;
-  gap: 0.35rem;
-  padding: 0 0.65rem 0.65rem 3.35rem;
-}
-
-.admin-overlap-error {
+.admin-overlap-event-user {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.55rem 0.65rem;
-  border-left: 2px solid var(--danger);
-  background: rgba(92, 39, 35, 0.2);
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.admin-overlap-details small {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.admin-overlap-event-description {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  padding-left: 2.65rem;
   color: var(--text-muted);
   font-size: 11px;
+}
+
+.admin-overlap-event-description strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.admin-overlap-event-description small,
+.admin-overlap-event-description span {
+  overflow-wrap: anywhere;
 }
 
 .admin-section {

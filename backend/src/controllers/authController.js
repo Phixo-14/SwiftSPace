@@ -1006,7 +1006,9 @@ async function getAdminOverview(req, res) {
       .select('roomName dimensions placedItems createdAt userId')
       .populate('userId', 'username'),
     RoomTimer.find(),
-    PlacementError.find().populate('catalogItemId', 'name'),
+    PlacementError.find()
+      .populate('catalogItemId', 'name')
+      .populate('userId', 'username email'),
     FurnitureRotationAdjustment.countDocuments(),
     RoomVersion.countDocuments({ name: /^Rearrangement record ·/ }),
     RoomVersion.find({ name: /^Rearrangement record ·/ })
@@ -1029,11 +1031,13 @@ async function getAdminOverview(req, res) {
   }, {});
   const roomById = new Map(allRooms.map((room) => [room._id.toString(), room]));
   const overlapRecords = placementErrors
+    .filter((record) => /overlap/i.test(record.reason || ''))
     .map((record) => ({
       ...record.toObject(),
       roomId: record.roomId,
       roomName: roomById.get(record.roomId.toString())?.roomName || 'Unknown room',
-      username: roomById.get(record.roomId.toString())?.userId?.username || 'Unknown user',
+      username: record.userId?.username || roomById.get(record.roomId.toString())?.userId?.username || 'Unknown user',
+      userEmail: record.userId?.email || roomById.get(record.roomId.toString())?.userId?.email || '',
     }))
     .sort((first, second) => new Date(second.occurredAt) - new Date(first.occurredAt));
   const recentRearrangements = rearrangementVersions.map((record) => ({
@@ -1078,7 +1082,7 @@ async function getAdminOverview(req, res) {
     recentRooms,
     recentRearrangements,
     monthlyRooms,
-    recentOverlaps: overlapRecords.slice(0, 8),
+    recentOverlaps: overlapRecords,
   });
 }
 
