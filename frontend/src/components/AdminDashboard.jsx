@@ -5,74 +5,16 @@ import { useAuth } from '../AuthContext.jsx';
 import PasswordInput from './PasswordInput.jsx';
 import BrandLogo from './BrandLogo.jsx';
 
-function getPredictiveAnalysis(overview) {
-  const monthlyRooms = overview?.monthlyRooms || [];
-  const counts = monthlyRooms.map(({ count }) => Number(count) || 0);
-  const recentCounts = counts.slice(-3);
-  const averageRecent = recentCounts.length
-    ? recentCounts.reduce((total, count) => total + count, 0) / recentCounts.length
-    : 0;
-  const averageAll = counts.length
-    ? counts.reduce((total, count) => total + count, 0) / counts.length
-    : 0;
-  const slope = counts.length > 1
-    ? counts.reduce((total, count, index) => total + (count - counts[0]) * index, 0)
-      / counts.reduce((total, _, index) => total + index ** 2, 0)
-    : 0;
-  const forecast = Math.max(0, Math.round(averageRecent + slope));
-  const trend = slope > 0.25 ? 'Growing' : slope < -0.25 ? 'Cooling' : 'Steady';
-  const trendMessage = trend === 'Growing'
-    ? `Activity is trending up by about ${slope.toFixed(1)} rooms per month.`
-    : trend === 'Cooling'
-      ? `Activity is trending down by about ${Math.abs(slope).toFixed(1)} rooms per month.`
-      : 'Room creation has stayed broadly level across the available history.';
-  const overlapRate = overview?.stats?.placements
-    ? (overview.stats.overlaps / overview.stats.placements) * 100
-    : 0;
-  const confidence = counts.length >= 6 && counts.some(Boolean) ? 'Moderate' : counts.some(Boolean) ? 'Early' : 'Not enough data';
-
-  return {
-    forecast,
-    trend,
-    trendMessage,
-    confidence,
-    averageRecent: averageRecent.toFixed(1),
-    averageAll: averageAll.toFixed(1),
-    overlapRate: overlapRate.toFixed(1),
-  };
+function dateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
-function getInferentialAnalysis(overview) {
-  const counts = (overview?.monthlyRooms || []).map(({ count }) => Number(count) || 0);
-  const midpoint = Math.floor(counts.length / 2);
-  const earlier = counts.slice(0, midpoint);
-  const recent = counts.slice(midpoint);
-  const earlierAverage = earlier.length
-    ? earlier.reduce((total, count) => total + count, 0) / earlier.length
-    : 0;
-  const recentAverage = recent.length
-    ? recent.reduce((total, count) => total + count, 0) / recent.length
-    : 0;
-  const difference = recentAverage - earlierAverage;
-  const changePercent = earlierAverage ? (difference / earlierAverage) * 100 : 0;
-  const direction = difference > 0.25 ? 'Higher' : difference < -0.25 ? 'Lower' : 'Similar';
-  const evidence = counts.length >= 6 && counts.some(Boolean)
-    ? Math.abs(difference) >= 1 ? 'Directional signal' : 'No clear difference'
-    : 'Insufficient history';
-  const interpretation = evidence === 'Directional signal'
-    ? `The recent period averaged ${Math.abs(difference).toFixed(1)} more room${Math.abs(difference) === 1 ? '' : 's'} per month than the earlier period.`
-    : evidence === 'No clear difference'
-      ? 'The two periods have similar average room creation activity.'
-      : 'Add more monthly activity before drawing a reliable conclusion.';
-
-  return {
-    earlierAverage: earlierAverage.toFixed(1),
-    recentAverage: recentAverage.toFixed(1),
-    changePercent: `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(0)}%`,
-    direction,
-    evidence,
-    interpretation,
-  };
+function localDateKey(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : dateInputValue(date);
 }
 
 export default function AdminDashboard() {
@@ -91,6 +33,12 @@ export default function AdminDashboard() {
   const [systemLogsError, setSystemLogsError] = useState('');
   const [systemLogLevel, setSystemLogLevel] = useState('all');
   const [systemLogRefreshKey, setSystemLogRefreshKey] = useState(0);
+  const [periodEnd, setPeriodEnd] = useState(() => dateInputValue(new Date()));
+  const [periodStart, setPeriodStart] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 29);
+    return dateInputValue(date);
+  });
 
   function formatTimer(seconds = 0) {
     const hours = Math.floor(seconds / 3600).toString().padStart(2, '0');
@@ -183,11 +131,16 @@ export default function AdminDashboard() {
     if (first.role === second.role) return 0;
     return first.role === 'admin' ? -1 : 1;
   });
-  const prediction = overview ? getPredictiveAnalysis(overview) : null;
-  const inference = overview ? getInferentialAnalysis(overview) : null;
   const filteredSystemLogs = systemLogLevel === 'all'
     ? systemLogs
     : systemLogs.filter((log) => log.level === systemLogLevel);
+  const overlapLearning = overview?.overlapLearning;
+  const overlapModelAtChance = overlapLearning?.status === 'trained' && overlapLearning.balancedAccuracy <= 50;
+  const invalidPeriod = Boolean(periodStart && periodEnd && periodStart > periodEnd);
+  const roomsSavedInPeriod = invalidPeriod ? [] : (overview?.recentRooms || []).filter((room) => {
+    const createdDate = localDateKey(room.createdAt);
+    return createdDate && (!periodStart || createdDate >= periodStart) && (!periodEnd || createdDate <= periodEnd);
+  });
   return (
     <div className="page admin-page">
       <aside className="admin-hover-sidebar" aria-label="Admin navigation">
@@ -197,8 +150,6 @@ export default function AdminDashboard() {
         <nav className="admin-sidebar-nav">
           <a href="#admin-overview"><span className="admin-nav-icon">⌂</span><span className="admin-sidebar-label">Overview</span></a>
           <a href="#admin-analytics"><span className="admin-nav-icon">◒</span><span className="admin-sidebar-label">Analytics</span></a>
-          <a href="#admin-predictions"><span className="admin-nav-icon">↗</span><span className="admin-sidebar-label">Predictions</span></a>
-          <a href="#admin-inference"><span className="admin-nav-icon">∴</span><span className="admin-sidebar-label">Inference</span></a>
           <a href="#admin-users"><span className="admin-nav-icon">◎</span><span className="admin-sidebar-label">Users</span></a>
           <a href="#admin-overlaps"><span className="admin-nav-icon">!</span><span className="admin-sidebar-label">Overlap activity</span></a>
           <a
@@ -250,76 +201,71 @@ export default function AdminDashboard() {
         {overview && (
           <>
             <section className="admin-stats" aria-label="Studio statistics">
-              <article className="stat-card"><span className="stat-label">Total users</span><strong>{overview.stats.users}</strong><span className="stat-note">Registered accounts</span></article>
-              <article className="stat-card"><span className="stat-label">Administrators</span><strong>{overview.stats.admins}</strong><span className="stat-note">Privileged accounts</span></article>
-              <article className="stat-card"><span className="stat-label">Saved rooms</span><strong>{overview.stats.rooms}</strong><span className="stat-note">Across all workspaces</span></article>
-              <article className="stat-card"><span className="stat-label">Catalog items</span><strong>{overview.stats.catalogItems}</strong><span className="stat-note">Available furniture</span></article>
-              <article className="stat-card"><span className="stat-label">Rotation adjustments</span><strong>{overview.stats.furnitureRotationAdjustments}</strong><span className="stat-note">Saved angle changes tracked</span></article>
-              <article className="stat-card"><span className="stat-label">Rearrangement records</span><strong>{overview.stats.rearrangementRecords || 0}</strong><span className="stat-note">Automatic records every 3 active minutes</span></article>
+              <article className="stat-card"><span className="stat-label">Registered users</span><strong>{overview.stats.registeredUsers ?? overview.stats.users}</strong></article>
+              <article className="stat-card"><span className="stat-label">Saved rooms</span><strong>{overview.stats.rooms}</strong></article>
+              <article className="stat-card"><span className="stat-label">Average furniture per room</span><strong>{overview.stats.averageFurniturePerRoom ?? '0.0'}</strong></article>
+              <article className="stat-card"><span className="stat-label">Rooms with overlap records</span><strong>{overview.stats.roomsWithRecordedOverlaps || 0}</strong></article>
+              <article className="stat-card"><span className="stat-label">Rooms saved in selected period</span><strong>{invalidPeriod ? '—' : roomsSavedInPeriod.length}</strong></article>
             </section>
 
-            <section className="analytics-panel" id="admin-analytics">
+            <section className="analytics-panel" id="admin-analytics" aria-labelledby="analytics-heading">
               <div className="section-heading">
-                <div><p className="eyebrow">Analytics</p><h3>Studio usage</h3></div>
-                <span className="muted small">Last six months</span>
+                <div><p className="eyebrow">Analytics</p><h3 id="analytics-heading">What people do in SwiftSpace</h3></div>
+                <div className="analytics-period-controls" aria-label="Room date range filter">
+                  <label>From<input type="date" value={periodStart} max={periodEnd || undefined} onChange={(event) => setPeriodStart(event.target.value)} /></label>
+                  <label>To<input type="date" value={periodEnd} min={periodStart || undefined} onChange={(event) => setPeriodEnd(event.target.value)} /></label>
+                </div>
               </div>
-              <div className="analytics-grid">
-                <div className="analytics-chart" aria-label="Rooms created over the last six months">
-                  {overview.monthlyRooms.map((month) => (
-                    <div className="chart-column" key={`${month.month}-${month.count}`}>
-                      <span className="chart-value">{month.count}</span>
-                      <span className="chart-bar" style={{ height: `${Math.max(month.count ? (month.count / Math.max(...overview.monthlyRooms.map(({ count }) => count), 1)) * 100 : 4, 4)}%` }} />
-                      <span className="chart-label">{month.month}</span>
+              <div className="analytics-function-grid">
+                <article className="analytics-function-card">
+                  <h4>Rooms saved over time</h4>
+                  <strong className="analytics-primary-value">{overview.stats.rooms}</strong>
+                  <div className="analytics-chart" aria-label="Saved rooms created per month for the last six months">
+                    {overview.monthlyRooms.map((month) => (
+                      <div className="chart-column" key={`${month.month}-${month.count}`}>
+                        <span className="chart-value">{month.count}</span>
+                        <span className="chart-bar" style={{ height: `${Math.max(month.count ? (month.count / Math.max(...overview.monthlyRooms.map(({ count }) => count), 1)) * 100 : 4, 4)}%` }} />
+                        <span className="chart-label">{month.month}</span>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+
+                <article className="analytics-function-card">
+                  <h4>Items in saved layouts</h4>
+                  <strong className="analytics-primary-value">{overview.stats.placements}</strong>
+                  <div className="selection-summary">
+                    <div>
+                      <h5>Most selected items</h5>
+                      {overview.furnitureSelections?.slice(0, 5).length ? overview.furnitureSelections.slice(0, 5).map((item) => (
+                        <div className="selection-row" key={item.itemId}><span>{item.name}</span><strong>{item.count}</strong></div>
+                      )) : <p className="muted small">No saved furniture placements yet.</p>}
                     </div>
-                  ))}
-                </div>
-                <div className="analytics-highlights">
-                  <div><span>Furniture placed</span><strong>{overview.stats.placements}</strong></div>
-                  <div><span>Overlap attempts</span><strong>{overview.stats.overlaps}</strong></div>
-                  <div><span>Average room area</span><strong>{overview.stats.averageArea} <small>cells</small></strong></div>
-                  <div><span>Rooms per user</span><strong>{overview.stats.users ? (overview.stats.rooms / overview.stats.users).toFixed(1) : '0.0'}</strong></div>
-                </div>
-              </div>
-            </section>
+                  </div>
+                </article>
 
-            <section className="predictive-panel" id="admin-predictions" aria-labelledby="predictive-heading">
-              <div className="section-heading">
-                <div><p className="eyebrow">Predictive analysis</p><h3 id="predictive-heading">What the next month may look like</h3></div>
-                <span className="prediction-confidence">{prediction.confidence} confidence</span>
+                <article className="analytics-function-card">
+                  <h4>Overlap attempts and rearrangements</h4>
+                  <strong className="analytics-primary-value">{overview.stats.roomsWithRecordedOverlaps || 0} <small>of {overview.stats.rooms} rooms</small></strong>
+                  <div className="analytics-overlap-total"><span>Recorded overlap attempts</span><strong>{overview.stats.overlaps}</strong></div>
+                  <div className="analytics-overlap-total"><span>Rearrangement records</span><strong>{overview.stats.rearrangementRecords || 0}</strong></div>
+                  <div className="overlap-model-insight" aria-label="Machine learning analysis of overlap records">
+                    <div className="overlap-model-heading">
+                      <span>Pattern analysis</span>
+                      <strong className={overlapModelAtChance ? 'weak' : ''}>
+                        {overlapLearning?.status === 'trained'
+                          ? overlapModelAtChance ? `${overlapLearning.balancedAccuracy}% · near chance` : `${overlapLearning.balancedAccuracy}% balanced accuracy`
+                          : 'Learning from saved rooms'}
+                      </strong>
+                    </div>
+                    {overlapLearning?.status === 'trained' ? (
+                      <p>{overlapLearning.signals.map((signal) => `${signal.name}: ${signal.direction}`).join(' · ')}</p>
+                    ) : (
+                      <p>{overlapLearning?.message || 'More saved room records are needed before patterns can be evaluated.'}</p>
+                    )}
+                  </div>
+                </article>
               </div>
-              <div className="prediction-grid">
-                <div className="prediction-lead">
-                  <span className="stat-label">Projected room creations</span>
-                  <strong>{prediction.forecast}</strong>
-                  <span className="muted small">next calendar month</span>
-                </div>
-                <div className="prediction-insights">
-                  <div><span>Current trajectory</span><strong className={`prediction-trend ${prediction.trend.toLowerCase()}`}>{prediction.trend}</strong><small>{prediction.trendMessage}</small></div>
-                  <div><span>Recent monthly average</span><strong>{prediction.averageRecent}</strong><small>Compared with {prediction.averageAll} across all six months</small></div>
-                  <div><span>Overlap risk signal</span><strong>{prediction.overlapRate}%</strong><small>Overlap attempts per furniture placement</small></div>
-                </div>
-              </div>
-              <p className="prediction-method">Estimate uses a linear trend across the six-month room history, blended with the recent three-month average.</p>
-            </section>
-
-            <section className="inferential-panel" id="admin-inference" aria-labelledby="inference-heading">
-              <div className="section-heading">
-                <div><p className="eyebrow">Inferential analysis</p><h3 id="inference-heading">Is activity changing?</h3></div>
-                <span className={`inference-evidence ${inference.evidence === 'Directional signal' ? 'signal' : ''}`}>{inference.evidence}</span>
-              </div>
-              <div className="inference-grid">
-                <div className="inference-result">
-                  <span className="stat-label">Recent period vs earlier period</span>
-                  <strong className={`inference-direction ${inference.direction.toLowerCase()}`}>{inference.direction}</strong>
-                  <span className="muted small">{inference.changePercent} average monthly activity</span>
-                </div>
-                <div className="inference-metrics">
-                  <div><span>Earlier three-month average</span><strong>{inference.earlierAverage}</strong><small>rooms per month</small></div>
-                  <div><span>Recent three-month average</span><strong>{inference.recentAverage}</strong><small>rooms per month</small></div>
-                  <div><span>Interpretation</span><small>{inference.interpretation}</small></div>
-                </div>
-              </div>
-              <p className="inference-method">Comparison uses the first three and latest three months. This is an observed association, not proof that one factor caused the change.</p>
             </section>
 
             <section className="admin-section overlap-activity-section" id="admin-overlaps">
@@ -330,21 +276,11 @@ export default function AdminDashboard() {
               {overview.recentOverlaps.length === 0 ? (
                 <p className="muted">No overlap attempts have been recorded.</p>
               ) : (
-                <div className="admin-overlap-list" role="list" aria-label="All overlap attempts">
+                <div className="admin-overlap-list" role="list" aria-label="All overlap attempts" tabIndex={0}>
                   {overview.recentOverlaps.map((record) => (
-                    <article className="admin-overlap-event" key={record._id} role="listitem">
-                      <div className="admin-overlap-event-user">
-                        <span className="overlap-signal" aria-hidden="true">!</span>
-                        <span className="admin-overlap-details">
-                          <strong>{record.username || 'Unknown user'}</strong>
-                          <small>{record.userEmail || 'Account unavailable'} · {new Date(record.occurredAt).toLocaleString()}</small>
-                        </span>
-                      </div>
-                      <div className="admin-overlap-event-description">
-                        <strong>{record.catalogItemId?.name || 'Furniture'}</strong>
-                        <span>{record.reason || 'Furniture placement overlapped.'}</span>
-                        <small className="mono">{record.roomName} · ({record.gridX}, {record.gridY}) · {record.rotation}°</small>
-                      </div>
+                    <article className="admin-overlap-event admin-overlap-event-compact" key={record._id} role="listitem">
+                      <strong>{record.username || 'Unknown user'}</strong>
+                      <span>{record.catalogItemId?.name || 'Furniture'}</span>
                     </article>
                   ))}
                 </div>

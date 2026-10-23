@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Question 3: Room-planning time in minutes</title>
+  <desc id="desc">Twenty-seven of 30 SwiftSpace time records show a positive duration of 30 minutes or less. The time distribution is shown in minute ranges: 3 records at zero minutes, 26 over zero to 5 minutes, and 1 from 15 to 20 minutes.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ed5514"/>
+      <stop offset="1" stop-color="#a5220d"/>
+    </linearGradient>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; }
+    </style>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <rect width="1060" height="112" fill="#252525"/>
+  <rect x="1074" width="126" height="112" fill="#ff9d12"/>
+  <rect x="24" y="20" width="12" height="74" rx="3" fill="#ff9d12"/>
+  <text x="60" y="72" fill="#fffaf2" font-size="34" font-weight="700">Question 3</text>
+
+  <text x="54" y="164" fill="#fffaf2" font-size="23" font-weight="600">What proportion of participants completed the room-planning</text>
+  <text x="54" y="196" fill="#fffaf2" font-size="23" font-weight="600">task within 30 minutes?</text>
+
+  <rect x="48" y="228" width="1104" height="386" rx="16" fill="#fffaf2"/>
+  <text x="88" y="278" fill="#625951" font-size="16" font-weight="700" letter-spacing="1">ROOM-PLANNING TIME · MINUTES</text>
+
+  <text x="88" y="383" fill="#e95517" font-size="82" font-weight="800">27 / 30</text>
+  <text x="94" y="424" fill="#252525" font-size="23" font-weight="700">90% had a positive</text>
+  <text x="94" y="454" fill="#252525" font-size="23" font-weight="700">recorded time within 30 min</text>
+  <text x="94" y="503" fill="#766b63" font-size="15">All 27 positive times were 16.33 min or less.</text>
+  <text x="94" y="550" fill="#766b63" font-size="14">Completion status is not recorded separately.</text>
+
+  <line x1="440" y1="300" x2="440" y2="568" stroke="#e3d8ce" stroke-width="2"/>
+  <text x="480" y="321" fill="#252525" font-size="19" font-weight="700">Recorded durations by minute range</text>
+  <text x="480" y="347" fill="#766b63" font-size="14">Number of records</text>
+
+  <g fill="#e95517">
+    <rect x="526" y="489" width="50" height="14" rx="4"/>
+    <rect x="604" y="381" width="50" height="122" rx="4"/>
+    <rect x="682" y="503" width="50" height="0" rx="4"/>
+    <rect x="760" y="503" width="50" height="0" rx="4"/>
+    <rect x="838" y="498" width="50" height="5" rx="3"/>
+    <rect x="916" y="503" width="50" height="0" rx="4"/>
+    <rect x="994" y="503" width="50" height="0" rx="4"/>
+  </g>
+  <g fill="#252525" font-size="14" font-weight="700" text-anchor="middle">
+    <text x="551" y="480">3</text><text x="629" y="370">26</text><text x="707" y="490">0</text>
+    <text x="785" y="490">0</text><text x="863" y="490">1</text><text x="941" y="490">0</text><text x="1019" y="490">0</text>
+  </g>
+  <line x1="510" y1="504" x2="1060" y2="504" stroke="#625951" stroke-width="2"/>
+  <g fill="#625951" font-size="12" text-anchor="middle">
+    <text x="551" y="530">0 min</text><text x="629" y="530">&gt;0–5</text><text x="707" y="530">5–10</text>
+    <text x="785" y="530">10–15</text><text x="863" y="530">15–20</text><text x="941" y="530">20–25</text><text x="1019" y="530">25–30</text>
+  </g>
+  <text x="480" y="571" fill="#766b63" font-size="13">Time ranges are in minutes; all positive records fall within the 30-minute limit.</text>
+</svg>

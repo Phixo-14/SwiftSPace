@@ -996,12 +996,126 @@ async function banUser(req, res) {
 }
 
 // GET /api/auth/admin/overview — requires an existing admin token.
+function standardizeTrainingRows(rows, means = null, deviations = null) {
+  const featureCount = rows[0]?.features.length || 0;
+  const centers = means || Array.from({ length: featureCount }, (_, index) => (
+    rows.reduce((sum, row) => sum + row.features[index], 0) / rows.length
+  ));
+  const scales = deviations || Array.from({ length: featureCount }, (_, index) => {
+    const variance = rows.reduce((sum, row) => sum + (row.features[index] - centers[index]) ** 2, 0) / rows.length;
+    return Math.sqrt(variance) || 1;
+  });
+  return {
+    means: centers,
+    deviations: scales,
+    rows: rows.map((row) => ({
+      ...row,
+      values: row.features.map((value, index) => (value - centers[index]) / scales[index]),
+    })),
+  };
+}
+
+function fitOverlapModel(rows) {
+  const standardized = standardizeTrainingRows(rows);
+  const weights = Array(standardized.means.length + 1).fill(0);
+  const learningRate = 0.08;
+  const regularization = 0.1;
+  for (let epoch = 0; epoch < 1200; epoch += 1) {
+    const gradients = Array(weights.length).fill(0);
+    for (const row of standardized.rows) {
+      const score = weights[0] + row.values.reduce((sum, value, index) => sum + value * weights[index + 1], 0);
+      const probability = 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, score))));
+      const error = probability - row.label;
+      gradients[0] += error;
+      row.values.forEach((value, index) => { gradients[index + 1] += error * value; });
+    }
+    weights[0] -= learningRate * gradients[0] / standardized.rows.length;
+    for (let index = 1; index < weights.length; index += 1) {
+      weights[index] -= learningRate * (gradients[index] / standardized.rows.length + regularization * weights[index]);
+    }
+  }
+  return { weights, means: standardized.means, deviations: standardized.deviations };
+}
+
+function predictOverlapProbability(model, features) {
+  const score = model.weights[0] + features.reduce((sum, value, index) => (
+    sum + ((value - model.means[index]) / model.deviations[index]) * model.weights[index + 1]
+  ), 0);
+  return 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, score))));
+}
+
+function buildOverlapLearningSummary(allRooms, overlapRecords) {
+  const overlappingRoomIds = new Set(overlapRecords.map((record) => record.roomId.toString()));
+  const rows = allRooms.map((room) => {
+    const area = Math.max(1, (room.dimensions?.width || 1) * (room.dimensions?.length || 1));
+    const furnitureCount = room.placedItems?.length || 0;
+    return {
+      label: overlappingRoomIds.has(room._id.toString()) ? 1 : 0,
+      features: [Math.log1p(area), furnitureCount / area],
+    };
+  });
+  const positiveCount = rows.filter((row) => row.label === 1).length;
+  const negativeCount = rows.length - positiveCount;
+  if (rows.length < 30 || positiveCount < 5 || negativeCount < 5) {
+    return {
+      status: 'collecting-data',
+      trainingRooms: rows.length,
+      overlapRooms: positiveCount,
+      otherRooms: negativeCount,
+      message: 'The model needs at least 30 saved rooms, including 5 with and 5 without recorded overlap attempts.',
+      signals: [],
+    };
+  }
+
+  const folds = Array.from({ length: 5 }, () => []);
+  for (const label of [0, 1]) {
+    rows.filter((row) => row.label === label).forEach((row, index) => folds[index % folds.length].push(row));
+  }
+  let truePositive = 0;
+  let trueNegative = 0;
+  let falsePositive = 0;
+  let falseNegative = 0;
+  for (let foldIndex = 0; foldIndex < folds.length; foldIndex += 1) {
+    const validationRows = folds[foldIndex];
+    const trainingRows = folds.filter((_, index) => index !== foldIndex).flat();
+    const model = fitOverlapModel(trainingRows);
+    for (const row of validationRows) {
+      const predicted = predictOverlapProbability(model, row.features) >= 0.5 ? 1 : 0;
+      if (predicted === 1 && row.label === 1) truePositive += 1;
+      else if (predicted === 0 && row.label === 0) trueNegative += 1;
+      else if (predicted === 1) falsePositive += 1;
+      else falseNegative += 1;
+    }
+  }
+  const sensitivity = truePositive / (truePositive + falseNegative);
+  const specificity = trueNegative / (trueNegative + falsePositive);
+  const finalModel = fitOverlapModel(rows);
+  const signals = [
+    { name: 'Room area', coefficient: finalModel.weights[1] },
+    { name: 'Furniture per room cell', coefficient: finalModel.weights[2] },
+  ].sort((first, second) => Math.abs(second.coefficient) - Math.abs(first.coefficient))
+    .map(({ name, coefficient }) => ({
+      name,
+      direction: coefficient >= 0 ? 'associated with more recorded overlaps' : 'associated with fewer recorded overlaps',
+    }));
+
+  return {
+    status: 'trained',
+    trainingRooms: rows.length,
+    overlapRooms: positiveCount,
+    otherRooms: negativeCount,
+    balancedAccuracy: Number((((sensitivity + specificity) / 2) * 100).toFixed(1)),
+    message: 'Five-fold cross-validation; patterns show association, not cause.',
+    signals,
+  };
+}
+
 async function getAdminOverview(req, res) {
-  const [users, rooms, catalogItems, catalogCategoryItems, allRooms, timers, placementErrors, rotationAdjustments, rearrangementRecordCount, rearrangementVersions] = await Promise.all([
+  const [users, rooms, catalogItems, catalogItemsForCounts, allRooms, timers, placementErrors, rotationAdjustments, rearrangementRecordCount, rearrangementVersions] = await Promise.all([
     User.find().select('_id username email role bannedAt createdAt').sort({ role: 1, createdAt: -1 }),
     Room.find().select('roomName dimensions userId createdAt updatedAt').populate('userId', 'username email').sort({ updatedAt: -1 }),
     CatalogItem.countDocuments(),
-    CatalogItem.find().select('category'),
+    CatalogItem.find().select('name'),
     Room.find()
       .select('roomName dimensions placedItems createdAt userId')
       .populate('userId', 'username'),
@@ -1025,10 +1139,19 @@ async function getAdminOverview(req, res) {
   }));
 
   const totalPlacements = allRooms.reduce((total, room) => total + room.placedItems.length, 0);
-  const categoryCounts = catalogCategoryItems.reduce((counts, item) => {
-    counts[item.category] = (counts[item.category] || 0) + 1;
-    return counts;
-  }, {});
+  const catalogById = new Map(catalogItemsForCounts.map((item) => [item._id.toString(), item]));
+  const itemSelectionCounts = new Map();
+  for (const room of allRooms) {
+    for (const placedItem of room.placedItems) {
+      const catalogItem = catalogById.get(placedItem.catalogItemId?.toString());
+      if (!catalogItem) continue;
+      const itemId = catalogItem._id.toString();
+      const itemCount = itemSelectionCounts.get(itemId) || { itemId, name: catalogItem.name, count: 0 };
+      itemCount.count += 1;
+      itemSelectionCounts.set(itemId, itemCount);
+    }
+  }
+  const furnitureSelections = [...itemSelectionCounts.values()].sort((first, second) => second.count - first.count);
   const roomById = new Map(allRooms.map((room) => [room._id.toString(), room]));
   const overlapRecords = placementErrors
     .filter((record) => /overlap/i.test(record.reason || ''))
@@ -1040,6 +1163,11 @@ async function getAdminOverview(req, res) {
       userEmail: record.userId?.email || roomById.get(record.roomId.toString())?.userId?.email || '',
     }))
     .sort((first, second) => new Date(second.occurredAt) - new Date(first.occurredAt));
+  const roomsWithRecordedOverlaps = new Set(overlapRecords.map((record) => record.roomId.toString())).size;
+  const recordedOverlapRoomRate = allRooms.length
+    ? Number(((roomsWithRecordedOverlaps / allRooms.length) * 100).toFixed(1))
+    : 0;
+  const overlapLearning = buildOverlapLearningSummary(allRooms, overlapRecords);
   const recentRearrangements = rearrangementVersions.map((record) => ({
     _id: record._id,
     name: record.name,
@@ -1068,6 +1196,7 @@ async function getAdminOverview(req, res) {
   res.json({
     stats: {
       users: users.length,
+      registeredUsers: users.filter((user) => user.role !== 'admin' && !user.bannedAt).length,
       admins: users.filter((user) => user.role === 'admin').length,
       rooms: await Room.countDocuments(),
       catalogItems,
@@ -1075,13 +1204,17 @@ async function getAdminOverview(req, res) {
       furnitureRotationAdjustments: rotationAdjustments,
       rearrangementRecords: rearrangementRecordCount,
       overlaps: overlapRecords.length,
+      roomsWithRecordedOverlaps,
+      recordedOverlapRoomRate,
+      averageFurniturePerRoom: allRooms.length ? Number((totalPlacements / allRooms.length).toFixed(1)) : 0,
       averageArea: allRooms.length ? Math.round(totalArea / allRooms.length) : 0,
-      categoryCounts,
     },
     users,
     recentRooms,
     recentRearrangements,
     monthlyRooms,
+    furnitureSelections,
+    overlapLearning,
     recentOverlaps: overlapRecords,
   });
 }

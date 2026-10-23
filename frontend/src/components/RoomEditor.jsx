@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useLocation, useNavigate, useParams, Link } from 'react-router-dom';
 import api from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 import ItemGlyph from './ItemGlyph.jsx';
+
+const RoomPreview3D = lazy(() => import('./RoomPreview3D.jsx'));
 
 const DEFAULT_DIMENSIONS = { width: 6, length: 6 };
 const DEFAULT_MEASUREMENTS = { width: '', length: '', unit: 'ft' };
@@ -22,6 +24,7 @@ const FURNITURE_CATEGORIES = [
 ];
 const ARCHITECTURAL_TOOLS = [
   { value: 'select', label: 'Select' },
+  { value: 'measure', label: 'Measure' },
   { value: 'wall', label: 'Wall' },
   { value: 'door', label: 'Door' },
   { value: 'window', label: 'Window' },
@@ -74,10 +77,10 @@ function distanceToSegment(point, segment) {
   return Math.hypot(point.x - segment.startX - progress * deltaX, point.y - segment.startY - progress * deltaY);
 }
 
-function snapArchitecturalSegment(start, point, dimensions) {
+function snapArchitecturalSegment(start, point, dimensions, precision = 0.5) {
   const deltaX = point.x - start.x;
   const deltaY = point.y - start.y;
-  const snapAlongEdge = (value, maximum) => Math.max(0, Math.min(maximum, Math.round(value * 2) / 2));
+  const snapAlongEdge = (value, maximum) => Math.max(0, Math.min(maximum, Math.round(value / precision) * precision));
 
   if (Math.abs(deltaX) >= Math.abs(deltaY)) {
     const edgeY = Math.max(0, Math.min(dimensions.length, Math.round(start.y)));
@@ -94,8 +97,8 @@ function snapArchitecturalSegment(start, point, dimensions) {
   };
 }
 
-function snapArchitecturalPoint(point, dimensions) {
-  const snap = (value, maximum) => Math.max(0, Math.min(maximum, Math.round(value * 2) / 2));
+function snapArchitecturalPoint(point, dimensions, precision = 0.5) {
+  const snap = (value, maximum) => Math.max(0, Math.min(maximum, Math.round(value / precision) * precision));
   return {
     x: snap(point.x, dimensions.width),
     y: snap(point.y, dimensions.length),
@@ -131,6 +134,8 @@ export default function RoomEditor() {
   const [architecturalSegments, setArchitecturalSegments] = useState(storedDraft?.architecturalSegments || []);
   const [roomLabels, setRoomLabels] = useState(storedDraft?.roomLabels || []);
   const [architecturalTool, setArchitecturalTool] = useState('select');
+  const [snapPrecision] = useState(0.25);
+  const [measurementPoints, setMeasurementPoints] = useState([]);
   const [pendingArchitectPoint, setPendingArchitectPoint] = useState(null);
   const [architecturalDragEnd, setArchitecturalDragEnd] = useState(null);
   const [architecturalDragDelta, setArchitecturalDragDelta] = useState({ x: 0, y: 0 });
@@ -156,6 +161,7 @@ export default function RoomEditor() {
   const [fitZoom, setFitZoom] = useState(1);
   const [platformRotation, setPlatformRotation] = useState(0);
   const [showFloorExtensions, setShowFloorExtensions] = useState(false);
+  const [show3D, setShow3D] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [status, setStatus] = useState('');
@@ -460,6 +466,10 @@ export default function RoomEditor() {
     catalog.forEach((c) => map.set(c._id, c));
     return map;
   }, [catalog]);
+  const placedItemsFor3D = useMemo(() => placedItems.map((item) => ({
+    ...item,
+    catalogItem: catalogById.get(item.catalogItemId?.toString()),
+  })), [catalogById, placedItems]);
 
   const visibleCatalog = useMemo(
     () => catalog.filter((item) => item.category === selectedCategory
@@ -1300,10 +1310,12 @@ export default function RoomEditor() {
   function getArchitecturalMoveDelta(drag, event) {
     const point = getArchitecturalPoint(drag.svg, event.clientX, event.clientY);
     if (!point) return drag.delta;
-    let deltaX = Math.round(point.x - drag.pointerStart.x);
-    let deltaY = Math.round(point.y - drag.pointerStart.y);
+    const snapDelta = (value) => Math.round(value / snapPrecision) * snapPrecision;
+    let deltaX = snapDelta(point.x - drag.pointerStart.x);
+    let deltaY = snapDelta(point.y - drag.pointerStart.y);
     const clampDelta = (delta, minimum, maximum) => (
-      Math.max(Math.ceil(minimum), Math.min(Math.floor(maximum), delta))
+      Math.max(Math.ceil(minimum / snapPrecision) * snapPrecision,
+        Math.min(Math.floor(maximum / snapPrecision) * snapPrecision, delta))
     );
 
     if (drag.kind === 'segment') {
@@ -1326,7 +1338,7 @@ export default function RoomEditor() {
   }
 
   function beginOutsideArchitectureDrag(event) {
-    if (!isDesigner || !['wall', 'door', 'window'].includes(architecturalTool)) return;
+    if (show3D || !isDesigner || !['wall', 'door', 'window'].includes(architecturalTool)) return;
     if (event.target.closest?.('.iso-grid, .workspace-controls, .workspace-item-controls')) return;
     setStatus(`Placement error: ${architecturalTool} must be drawn on the room floor.`);
   }
@@ -1334,6 +1346,19 @@ export default function RoomEditor() {
   function beginArchitecturalDrag(event) {
     if (event.target.closest?.('.floor-extension-cell')) return;
     if (!isDesigner) return;
+
+    if (architecturalTool === 'measure') {
+      const svg = event.currentTarget.querySelector('.architectural-overlay');
+      const point = getArchitecturalPoint(svg, event.clientX, event.clientY);
+      if (!point || point.x < 0 || point.y < 0 || point.x > dimensions.width || point.y > dimensions.length) return;
+      const snapped = snapArchitecturalPoint(point, dimensions, snapPrecision);
+      setMeasurementPoints((current) => current.length >= 2 ? [snapped] : [...current, snapped]);
+      setSelectedArchitecturalElement(null);
+      setSelectedKey(null);
+      setArmedItemId(null);
+      event.preventDefault();
+      return;
+    }
 
     if (architecturalTool === 'select') {
       if (event.target.closest?.('.placed-item-resize-handle, [data-architecture-kind]')) return;
@@ -1419,7 +1444,7 @@ export default function RoomEditor() {
 
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    const start = snapArchitecturalPoint(pointerPoint, dimensions);
+    const start = snapArchitecturalPoint(pointerPoint, dimensions, snapPrecision);
     architecturalDragRef.current = {
       mode: 'create',
       pointerId: event.pointerId,
@@ -1543,7 +1568,7 @@ export default function RoomEditor() {
       const horizontal = original.startY === original.endY;
       const axis = horizontal ? 'x' : 'y';
       const limit = horizontal ? dimensions.width : dimensions.length;
-      const coordinate = Math.max(0, Math.min(limit, Math.round(point[axis] * 2) / 2));
+      const coordinate = Math.max(0, Math.min(limit, Math.round(point[axis] / snapPrecision) * snapPrecision));
       const segment = {
         ...original,
         ...(drag.endpoint === 'start'
@@ -1563,7 +1588,7 @@ export default function RoomEditor() {
     }
     const point = getArchitecturalPoint(drag.svg, event.clientX, event.clientY);
     if (!point) return;
-    const segment = snapArchitecturalSegment(drag.pointerStart, point, dimensions);
+    const segment = snapArchitecturalSegment(drag.pointerStart, point, dimensions, snapPrecision);
     drag.start = segment.start;
     drag.end = segment.end;
     setPendingArchitectPoint(segment.start);
@@ -2311,6 +2336,7 @@ export default function RoomEditor() {
                           : tool.value
                       );
                       setPendingArchitectPoint(null);
+                      setMeasurementPoints([]);
                       setSelectedArchitecturalElement(null);
                       setArmedItemId(null);
                     }}
@@ -2319,6 +2345,26 @@ export default function RoomEditor() {
                   </button>
                 ))}
               </div>
+              {architecturalTool === 'measure' && (
+                <p className="architect-tool-hint">
+                  {measurementPoints.length < 2
+                    ? `Click ${measurementPoints.length ? 'the second' : 'two'} points on the plan to measure.`
+                    : (() => {
+                      const [start, end] = measurementPoints;
+                      const horizontalScale = Number(measurements.width) > 0 ? Number(measurements.width) / dimensions.width : null;
+                      const verticalScale = Number(measurements.length) > 0 ? Number(measurements.length) / dimensions.length : null;
+                      const deltaX = end.x - start.x;
+                      const deltaY = end.y - start.y;
+                      const canUseRealUnits = (horizontalScale || deltaX === 0) && (verticalScale || deltaY === 0);
+                      const distance = canUseRealUnits
+                        ? Math.hypot(deltaX * (horizontalScale || 0), deltaY * (verticalScale || 0))
+                        : Math.hypot(deltaX, deltaY);
+                      return canUseRealUnits
+                        ? `Distance: ${distance.toFixed(2)} ${measurements.unit}`
+                        : `Distance: ${Math.hypot(deltaX, deltaY).toFixed(2)} grid cells. Enter both room measurements for diagonal real units.`;
+                    })()}
+                </p>
+              )}
               <label className="inspector-field architect-thickness">
                 Default wall thickness
                 <select value={wallThicknessMm} onChange={(event) => setWallThicknessMm(Number(event.target.value))}>
@@ -2471,6 +2517,10 @@ export default function RoomEditor() {
             <h1>{roomName}</h1>
           </div>
           <div className="workspace-controls" aria-label="Workspace zoom controls">
+            {show3D ? (
+              <button type="button" onClick={() => setShow3D(false)}>2D plan</button>
+            ) : (
+              <>
             <button type="button" onClick={() => updateZoom(zoom - 0.1)} disabled={zoom <= 0.6}>
               −
             </button>
@@ -2496,6 +2546,15 @@ export default function RoomEditor() {
             >
               Add extension
             </button>
+              </>
+            )}
+            {!show3D && <button className="workspace-view-toggle" type="button" onClick={() => {
+              setShowFloorExtensions(false);
+              setSelectedArchitecturalElement(null);
+              setSelectedKey(null);
+              setArmedItemId(null);
+              setShow3D(true);
+            }}>3D walkthrough</button>}
           </div>
           {selectedItem && (
             <div className="workspace-item-controls" aria-label="Selected furniture actions">
@@ -2545,6 +2604,18 @@ export default function RoomEditor() {
             </div>
           )}
           {hoverError && <div className="placement-warning">{hoverError}</div>}
+          {show3D ? (
+            <Suspense fallback={<div className="room-preview-loading">Loading 3D room…</div>}>
+              <RoomPreview3D
+                dimensions={dimensions}
+                floorCells={floorCells}
+                floorColor={floorColor}
+                placedItems={placedItemsFor3D}
+                architecturalSegments={architecturalSegments}
+                wallThicknessMm={wallThicknessMm}
+              />
+            </Suspense>
+          ) : (
           <div className="workspace-zoom" style={{ transform: `scale(${zoom * fitZoom}) rotate(${platformRotation}deg)` }}>
             <div
               className={`iso-grid${isDesigner ? ' architectural-grid' : ''}${showFloorExtensions ? ' floor-extensions-visible' : ' floor-extensions-hidden'}`}
@@ -2811,16 +2882,27 @@ export default function RoomEditor() {
                     <circle cx={pendingArchitectPoint.x * 43 + 1} cy={pendingArchitectPoint.y * 43 + 1} r="5" fill="#c2693c" stroke="#fff" strokeWidth="1.5" pointerEvents="none" />
                   )}
                   {pendingArchitectPoint && architecturalDragEnd && (
-                    <line
-                      className="architectural-drag-preview"
-                      x1={pendingArchitectPoint.x * 43 + 1}
-                      y1={pendingArchitectPoint.y * 43 + 1}
-                      x2={architecturalDragEnd.x * 43 + 1}
-                      y2={architecturalDragEnd.y * 43 + 1}
-                      strokeWidth={wallStrokeWidth}
-                      strokeDasharray="5 3"
-                      pointerEvents="none"
-                    />
+                    <g className="architectural-snap-preview" pointerEvents="none">
+                      <line
+                        className="architectural-drag-preview"
+                        x1={pendingArchitectPoint.x * 43 + 1}
+                        y1={pendingArchitectPoint.y * 43 + 1}
+                        x2={architecturalDragEnd.x * 43 + 1}
+                        y2={architecturalDragEnd.y * 43 + 1}
+                        strokeWidth={wallStrokeWidth}
+                        strokeDasharray="5 3"
+                      />
+                      <circle cx={pendingArchitectPoint.x * 43 + 1} cy={pendingArchitectPoint.y * 43 + 1} r="4" />
+                      <circle cx={architecturalDragEnd.x * 43 + 1} cy={architecturalDragEnd.y * 43 + 1} r="4" />
+                    </g>
+                  )}
+                  {architecturalTool === 'measure' && measurementPoints.length > 0 && (
+                    <g className="room-measurement-overlay" pointerEvents="none">
+                      {measurementPoints.length === 2 && (
+                        <line x1={measurementPoints[0].x * 43 + 1} y1={measurementPoints[0].y * 43 + 1} x2={measurementPoints[1].x * 43 + 1} y2={measurementPoints[1].y * 43 + 1} />
+                      )}
+                      {measurementPoints.map((point, index) => <circle key={index} cx={point.x * 43 + 1} cy={point.y * 43 + 1} r="4" />)}
+                    </g>
                   )}
                 </svg>
               )}
@@ -2981,6 +3063,7 @@ export default function RoomEditor() {
               })}
             </div>
           </div>
+          )}
         </main>
 
         <aside className="inspector-panel">
